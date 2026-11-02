@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	wastore "go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -18,16 +18,10 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-// waState is what the connector overview shows.
-type waState string
-
 const (
-	waNotConnected waState = "not_connected"
-	waPairing      waState = "pairing" // a QR code is on offer
-	waConnected    waState = "connected"
-	waPhoneRemoved waState = "phone_removed" // the child removed the device on the phone
-	settingRemoved         = "whatsapp_removed_by_phone"
-	deviceName             = "Guardian"
+	// settingRemoved remembers across restarts that the phone removed the device.
+	settingRemoved = "whatsapp_removed_by_phone"
+	deviceName     = "Guardian" // how the linked device is named on the phone
 )
 
 // whatsapp is the WhatsApp connector: one linked device, kept in secrets/.
@@ -81,14 +75,6 @@ func (w *whatsapp) newClient(device *wastore.Device) *whatsmeow.Client {
 	return c
 }
 
-// Status is a snapshot for the pages.
-type waStatus struct {
-	State     waState
-	Number    string
-	QR        string
-	QRExpires time.Time
-}
-
 func (w *whatsapp) Status() waStatus {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -96,13 +82,16 @@ func (w *whatsapp) Status() waStatus {
 }
 
 // StartPairing puts a QR code on offer. Safe to call while already pairing.
+// The lock is not held while connecting, so the pages' status polls and the
+// event handler never wait on the network.
 func (w *whatsapp) StartPairing(ctx context.Context) error {
 	w.mu.Lock()
-	defer w.mu.Unlock()
 	switch w.state {
 	case waConnected:
+		w.mu.Unlock()
 		return errors.New("already connected")
 	case waPairing:
+		w.mu.Unlock()
 		return nil
 	}
 	device := w.container.NewDevice()
@@ -110,18 +99,29 @@ func (w *whatsapp) StartPairing(ctx context.Context) error {
 	qrCtx, cancel := context.WithCancel(context.Background())
 	qrChan, err := client.GetQRChannel(qrCtx)
 	if err != nil {
+		w.mu.Unlock()
 		cancel()
 		return err
 	}
-	if err := client.Connect(); err != nil {
-		cancel()
-		return err
-	}
+	prev := w.state
 	w.client, w.cancel, w.state, w.qr = client, cancel, waPairing, ""
+	w.mu.Unlock()
+
+	if err := client.Connect(); err != nil {
+		w.mu.Lock()
+		if w.client == client { // not superseded meanwhile: back to how it was
+			w.client, w.cancel, w.state = nil, nil, prev
+		}
+		w.mu.Unlock()
+		cancel()
+		return err
+	}
 	go w.readQR(client, qrChan)
 	return nil
 }
 
+// readQR follows the pairing: each new code is put on offer; a timeout or
+// error ends the pairing so the page can offer a retry.
 func (w *whatsapp) readQR(client *whatsmeow.Client, qrChan <-chan whatsmeow.QRChannelItem) {
 	for item := range qrChan {
 		w.mu.Lock()
@@ -139,10 +139,12 @@ func (w *whatsapp) readQR(client *whatsmeow.Client, qrChan <-chan whatsmeow.QRCh
 		default:
 			// timeout or error: back to square one, the page offers a retry.
 			log.Printf("whatsapp: pairing ended: %s %v", item.Event, item.Error)
-			w.qr = ""
-			w.state = waNotConnected
-			w.client = nil
+			cancel := w.cancel
+			w.qr, w.state, w.client, w.cancel = "", waNotConnected, nil, nil
 			w.mu.Unlock()
+			if cancel != nil {
+				cancel()
+			}
 			client.Disconnect()
 			return
 		}
@@ -189,8 +191,17 @@ func (w *whatsapp) Close() {
 	w.container.Close()
 }
 
+// eventTimeout bounds the database work for one event; a history sync gets
+// it per conversation, since one sync can hold thousands of messages.
+const eventTimeout = 30 * time.Second
+
+// handle is whatsmeow's event handler.
 func (w *whatsapp) handle(evt any) {
-	ctx, cancelCtx := context.WithTimeout(context.Background(), 30*time.Second)
+	if e, ok := evt.(*events.HistorySync); ok {
+		w.saveHistory(e)
+		return
+	}
+	ctx, cancelCtx := context.WithTimeout(context.Background(), eventTimeout)
 	defer cancelCtx()
 	switch e := evt.(type) {
 	case *events.PairSuccess:
@@ -219,39 +230,53 @@ func (w *whatsapp) handle(evt any) {
 		log.Print("whatsapp: device removed by the phone")
 	case *events.Message:
 		w.saveMessage(ctx, e)
-	case *events.HistorySync:
-		w.saveHistory(ctx, e)
 	}
 }
 
-func (w *whatsapp) saveHistory(ctx context.Context, e *events.HistorySync) {
+// currentClient returns the current client, nil when there is none.
+func (w *whatsapp) currentClient() *whatsmeow.Client {
 	w.mu.Lock()
-	client := w.client
-	w.mu.Unlock()
+	defer w.mu.Unlock()
+	return w.client
+}
+
+// saveHistory keeps the messages of a history sync.
+func (w *whatsapp) saveHistory(e *events.HistorySync) {
+	client := w.currentClient()
 	if client == nil {
 		return
 	}
 	n := 0
 	for _, conv := range e.Data.GetConversations() {
-		chatJID, err := types.ParseJID(conv.GetID())
+		n += w.saveConversation(client, conv)
+	}
+	log.Printf("whatsapp: history sync, %d messages", n)
+}
+
+// saveConversation keeps one conversation of a history sync and returns how
+// many of its messages could be read.
+func (w *whatsapp) saveConversation(client *whatsmeow.Client, conv *waHistorySync.Conversation) int {
+	chatJID, err := types.ParseJID(conv.GetID())
+	if err != nil {
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), eventTimeout)
+	defer cancel()
+	name := conv.GetName()
+	if name == "" {
+		name = conv.GetDisplayName()
+	}
+	_ = w.st.EnsureChat(ctx, chatJID.String(), name, chatJID.Server == types.GroupServer, name != "")
+	n := 0
+	for _, hm := range conv.GetMessages() {
+		msg, err := client.ParseWebMessage(chatJID, hm.GetMessage())
 		if err != nil {
 			continue
 		}
-		name := conv.GetName()
-		if name == "" {
-			name = conv.GetDisplayName()
-		}
-		_ = w.st.EnsureChat(ctx, chatJID.String(), name, chatJID.Server == types.GroupServer, name != "")
-		for _, hm := range conv.GetMessages() {
-			msg, err := client.ParseWebMessage(chatJID, hm.GetMessage())
-			if err != nil {
-				continue
-			}
-			w.saveMessage(ctx, msg)
-			n++
-		}
+		w.saveMessage(ctx, msg)
+		n++
 	}
-	log.Printf("whatsapp: history sync, %d messages", n)
+	return n
 }
 
 func (w *whatsapp) saveMessage(ctx context.Context, e *events.Message) {
@@ -285,9 +310,7 @@ func (w *whatsapp) rememberChat(ctx context.Context, e *events.Message, chat typ
 	if known, _ := w.st.ChatName(ctx, chat.String()); known != "" {
 		return
 	}
-	w.mu.Lock()
-	client := w.client
-	w.mu.Unlock()
+	client := w.currentClient()
 	name := ""
 	if client != nil {
 		if isGroup {
@@ -333,15 +356,6 @@ func describe(m *waE2E.Message) (kind, text string) {
 		return "", ""
 	}
 	return "other", ""
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func boolPtr(b bool) *bool { return &b }

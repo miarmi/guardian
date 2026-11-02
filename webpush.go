@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,8 +32,8 @@ import (
 
 var b64 = base64.RawURLEncoding
 
-// vapidKey loads or makes the server's signing key, kept in secrets/.
-func vapidKey(secretsDir string) (*ecdsa.PrivateKey, error) {
+// loadVAPIDKey loads or makes the server's signing key, kept in secrets/.
+func loadVAPIDKey(secretsDir string) (*ecdsa.PrivateKey, error) {
 	path := filepath.Join(secretsDir, "vapid.pem")
 	if data, err := os.ReadFile(path); err == nil {
 		block, _ := pem.Decode(data)
@@ -200,45 +199,4 @@ func encryptPush(payload []byte, p256dh, authSecret string) ([]byte, error) {
 	out = append(out, asPub...)
 	out = append(out, sealed...)
 	return out, nil
-}
-
-// decryptPush is the browser's side, for tests.
-func decryptPush(body []byte, ua *ecdh.PrivateKey, auth []byte) ([]byte, error) {
-	if len(body) < 21 {
-		return nil, errors.New("short")
-	}
-	salt, idlen := body[:16], int(body[20])
-	asPub, err := ecdh.P256().NewPublicKey(body[21 : 21+idlen])
-	if err != nil {
-		return nil, err
-	}
-	shared, err := ua.ECDH(asPub)
-	if err != nil {
-		return nil, err
-	}
-	info := append(append([]byte("WebPush: info\x00"), ua.PublicKey().Bytes()...), asPub.Bytes()...)
-	ikm, _ := hkdf.Key(sha256.New, shared, auth, string(info), 32)
-	cek, _ := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: aes128gcm\x00", 16)
-	nonce, _ := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: nonce\x00", 12)
-	block, _ := aes.NewCipher(cek)
-	gcm, _ := cipher.NewGCM(block)
-	plain, err := gcm.Open(nil, nonce, body[21+idlen:], nil)
-	if err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(plain, "\x00")[:len(bytes.TrimRight(plain, "\x00"))-1], nil
-}
-
-// verifyES256 checks a VAPID token's signature, for tests.
-func verifyES256(token string, pub *ecdsa.PublicKey) bool {
-	i := bytes.LastIndexByte([]byte(token), '.')
-	if i < 0 {
-		return false
-	}
-	sig, err := b64.DecodeString(token[i+1:])
-	if err != nil || len(sig) != 64 {
-		return false
-	}
-	digest := sha256.Sum256([]byte(token[:i]))
-	return ecdsa.Verify(pub, digest[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:]))
 }

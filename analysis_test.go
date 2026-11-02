@@ -46,7 +46,7 @@ func TestAnalysisWithPracticeModel(t *testing.T) {
 	}
 	// Six default situations, seeded once.
 	sits := do("GET", "/situations", nil).Body.String()
-	for _, name := range []string{"Urážky a ponižování", "Vylučování ze skupiny", "Výhrůžky", "Vydírání nebo nátlak na fotky", "Kontakt od neznámého dospělého", "Dítě je v nouzi"} {
+	for _, name := range []string{"Opakované ponižování", "Vyřazování ze skupiny", "Výhrůžky násilím", "Vydírání intimními fotkami", "Kontakt od cizího dospělého", "Dítě v nouzi"} {
 		if !strings.Contains(sits, name) {
 			t.Errorf("default situation %q missing", name)
 		}
@@ -63,12 +63,12 @@ func TestAnalysisWithPracticeModel(t *testing.T) {
 		do("POST", "/dev/whatsapp/message", url.Values{"chat": {chat}, "chat_name": {name}, "sender_name": {"Kuba"}, "text": {text}})
 	}
 	msg("c1", "Kuba", "ahoj")
-	msg("c1", "Kuba", "zítra tě zmlátím [Výhrůžky]")
-	msg("c1", "Kuba", "fakt [Výhrůžky]")
-	msg("c1", "Kuba", "a ještě [Výhrůžky]")
+	msg("c1", "Kuba", "zítra tě zmlátím [Výhrůžky násilím]")
+	msg("c1", "Kuba", "fakt [Výhrůžky násilím]")
+	msg("c1", "Kuba", "a ještě [Výhrůžky násilím]")
 	do("POST", "/dev/analysis/run", nil)
 	page = do("GET", "/", nil).Body.String()
-	if !strings.Contains(page, "Nový vážný nález: Výhrůžky v chatu Kuba") {
+	if !strings.Contains(page, "Nový vážný nález: Výhrůžky násilím v chatu Kuba") {
 		t.Fatal("alert banner missing")
 	}
 	fin := do("GET", "/findings", nil).Body.String()
@@ -79,14 +79,14 @@ func TestAnalysisWithPracticeModel(t *testing.T) {
 		t.Fatal("banner should go once the findings were opened")
 	}
 	// Same situation, same chat, while open: adds to the finding.
-	msg("c1", "Kuba", "znova [Výhrůžky]")
+	msg("c1", "Kuba", "znova [Výhrůžky násilím]")
 	do("POST", "/dev/analysis/run", nil)
 	if n := strings.Count(do("GET", "/findings", nil).Body.String(), "Zkušební nález."); n != 1 {
 		t.Fatalf("expected one finding, got %d", n)
 	}
 	// Model down: says so, messages wait, nothing lost.
 	do("POST", "/dev/model/unreachable", url.Values{"on": {"1"}})
-	msg("c2", "Eva", "[Výhrůžky]")
+	msg("c2", "Eva", "[Výhrůžky násilím]")
 	do("POST", "/dev/analysis/run", nil)
 	if !strings.Contains(do("GET", "/", nil).Body.String(), "Analýza se nepovedla: zkušební model je nedostupný") {
 		t.Fatal("failure not shown")
@@ -102,7 +102,7 @@ func TestDailyLimit(t *testing.T) {
 	_, do := practiceApp(t)
 	do("POST", "/settings", url.Values{"type": {"practice"}, "limit": {"1"}})
 	for _, c := range []string{"a", "b"} {
-		do("POST", "/dev/whatsapp/message", url.Values{"chat": {c}, "chat_name": {c}, "text": {"[Výhrůžky]"}})
+		do("POST", "/dev/whatsapp/message", url.Values{"chat": {c}, "chat_name": {c}, "text": {"[Výhrůžky násilím]"}})
 	}
 	do("POST", "/dev/analysis/run", nil)
 	if !strings.Contains(do("GET", "/", nil).Body.String(), "Denní limit dotazů je vyčerpaný, analýza pokračuje zítra.") {
@@ -170,7 +170,7 @@ func TestDestination(t *testing.T) {
 }
 
 func TestParseFindings(t *testing.T) {
-	sits := []Situation{{ID: 3, Name: "Výhrůžky"}}
+	sits := []Situation{{ID: 3, Name: "Výhrůžky násilím"}}
 	fresh := []numbered{{Message: Message{Text: "a"}}, {Message: Message{Text: "b"}}}
 	got, err := parseFindings("Here you go:\n```json\n{\"findings\":[{\"situation\":3,\"reason\":\"Někdo vyhrožuje.\",\"quotes\":[4,5,9,1]},{\"situation\":99,\"reason\":\"x\",\"quotes\":[]}]}\n```", sits, fresh, 4)
 	if err != nil || len(got) != 1 || len(got[0].Quotes) != 2 || got[0].Quotes[0].Text != "a" {
@@ -272,7 +272,7 @@ func TestDeleteAsksAndKeepsFindings(t *testing.T) {
 func TestReopenFinding(t *testing.T) {
 	a, do := practiceApp(t)
 	do("POST", "/settings", url.Values{"type": {"practice"}})
-	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"r"}, "chat_name": {"R"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"r"}, "chat_name": {"R"}, "text": {"[Výhrůžky násilím]"}})
 	do("POST", "/dev/analysis/run", nil)
 	fs, _ := a.store.Findings(context.Background())
 	id := itoa(fs[0].ID)
@@ -317,4 +317,46 @@ func TestSlowAddressAnswersThePage(t *testing.T) {
 	if !strings.Contains(page, "Model neodpovídá: adresa neodpovídá (vypršel čas)") || !strings.Contains(page, `value="llama3"`) {
 		t.Fatal("no timeout message or the form was lost")
 	}
+}
+
+func TestNewDefaultSetReplacesTheOld(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	// A database from before: the old defaults, no version, one added situation.
+	old := []Situation{{Name: "Výhrůžky", Description: "d", Sensitivity: "medium", Action: "alert"}}
+	for _, o := range old {
+		if _, err := st.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin) VALUES (?, ?, ?, ?, 1, 1)`,
+			o.Name, o.Description, o.Sensitivity, o.Action); err != nil {
+			t.Fatal(err)
+		}
+	}
+	added, err := st.AddSituation(ctx, Situation{Name: "Moje", Description: "d", Sensitivity: "low", Action: "digest", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO findings (chat, situation_id, created_at, updated_at, reason, quotes) VALUES ('c', 1, 1, 1, 'r', '[]')`); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ { // the second run changes nothing
+		if err := st.SeedSituations(ctx, defaultSituationsCS); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sits, _ := st.Situations(ctx)
+	names := map[string]int{}
+	for _, s := range sits {
+		names[s.Name]++
+	}
+	if names["Výhrůžky"] != 0 || names["Moje"] != 1 || len(sits) != len(defaultSituationsCS)+1 {
+		t.Fatalf("after the upgrade: %v", names)
+	}
+	for _, d := range defaultSituationsCS {
+		if names[d.Name] != 1 {
+			t.Errorf("default %q listed %d times", d.Name, names[d.Name])
+		}
+	}
+	if fs, _ := st.Findings(ctx); len(fs) != 1 || fs[0].Situation.Name != "Výhrůžky" {
+		t.Fatal("the old default's finding is gone")
+	}
+	_ = added
 }

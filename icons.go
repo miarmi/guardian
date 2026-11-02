@@ -8,9 +8,11 @@ import (
 	"math"
 )
 
-const iconColor = "#3b4a8a"
+// iconColor is the brand colour: the icons' background and the manifest's
+// theme colour.
+const iconColor = "#1e6b64"
 
-// makeIcons draws the home-screen icons: a light shield on indigo.
+// makeIcons draws the home-screen icons: a white shield on teal.
 func makeIcons() map[string][]byte {
 	return map[string][]byte{
 		"apple-touch-icon.png": drawIcon(180),
@@ -20,8 +22,8 @@ func makeIcons() map[string][]byte {
 }
 
 func drawIcon(size int) []byte {
-	bg := color.RGBA{0x3b, 0x4a, 0x8a, 0xff}
-	shield := color.RGBA{0xf4, 0xf3, 0xf0, 0xff}
+	bg := color.RGBA{0x1e, 0x6b, 0x64, 0xff} // iconColor
+	shield := color.RGBA{0xff, 0xff, 0xff, 0xff}
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	s := float64(size)
 	for y := 0; y < size; y++ {

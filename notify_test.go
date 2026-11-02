@@ -17,18 +17,18 @@ func TestPushEncryptionRoundTrip(t *testing.T) {
 	ua, _ := ecdh.P256().GenerateKey(rand.Reader)
 	auth := make([]byte, 16)
 	rand.Read(auth)
-	body, err := encryptPush([]byte(`{"title":"Guardian: Výhrůžky"}`), b64.EncodeToString(ua.PublicKey().Bytes()), b64.EncodeToString(auth))
+	body, err := encryptPush([]byte(`{"title":"Guardian: Výhrůžky násilím"}`), b64.EncodeToString(ua.PublicKey().Bytes()), b64.EncodeToString(auth))
 	if err != nil {
 		t.Fatal(err)
 	}
 	plain, err := decryptPush(body, ua, auth)
-	if err != nil || string(plain) != `{"title":"Guardian: Výhrůžky"}` {
+	if err != nil || string(plain) != `{"title":"Guardian: Výhrůžky násilím"}` {
 		t.Fatalf("got %q, %v", plain, err)
 	}
 }
 
 func TestVAPIDTokenAndPushRequest(t *testing.T) {
-	key, err := vapidKey(t.TempDir())
+	key, err := loadVAPIDKey(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,16 +67,16 @@ func TestVAPIDTokenAndPushRequest(t *testing.T) {
 
 func TestKidTokens(t *testing.T) {
 	n := &notifier{secretsDir: t.TempDir()}
-	tok, err := n.kidToken(42, time.Now().Add(time.Hour))
+	tok, err := n.sign(tokenFinding, 42, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id, ok := n.checkKidToken(tok); !ok || id != 42 {
+	if id, ok := n.checkFindingToken(tok); !ok || id != 42 {
 		t.Fatal("valid token refused")
 	}
 	bad := []byte(tok)
 	bad[3] ^= 1
-	if _, ok := n.checkKidToken(string(bad)); ok {
+	if _, ok := n.checkFindingToken(string(bad)); ok {
 		t.Fatal("altered token accepted")
 	}
 	// The last character of each part has spare bits; every other spelling
@@ -88,17 +88,17 @@ func TestKidTokens(t *testing.T) {
 				continue
 			}
 			alt[i] = byte(c)
-			if _, ok := n.checkKidToken(string(alt)); ok {
+			if _, ok := n.checkFindingToken(string(alt)); ok {
 				t.Fatalf("altered spelling %q accepted", alt)
 			}
 		}
 	}
-	old, _ := n.kidToken(42, time.Now().Add(-time.Minute))
-	if _, ok := n.checkKidToken(old); ok {
+	old, _ := n.sign(tokenFinding, 42, time.Now().Add(-time.Minute))
+	if _, ok := n.checkFindingToken(old); ok {
 		t.Fatal("expired token accepted")
 	}
 	other := &notifier{secretsDir: t.TempDir()}
-	if _, ok := other.checkKidToken(tok); ok {
+	if _, ok := other.checkFindingToken(tok); ok {
 		t.Fatal("token from another key accepted")
 	}
 }
@@ -129,10 +129,10 @@ func TestParentsFirstThenChildCanAskForHelp(t *testing.T) {
 	a.nt.baseURL = "https://guardian.example"
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz, tata@example.cz"}})
-	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"c"}, "chat_name": {"Kuba"}, "sender_name": {"Kuba"}, "text": {"tajemství zpráva [Výhrůžky]"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"c"}, "chat_name": {"Kuba"}, "sender_name": {"Kuba"}, "text": {"tajemství zpráva [Výhrůžky násilím]"}})
 	do("POST", "/dev/analysis/run", nil)
 	box := outbox(t, do)
-	if len(box) != 1 || box[0].Kind != "push" || box[0].Subject != "Guardian: Výhrůžky" || box[0].Text != "v chatu Kuba" {
+	if len(box) != 1 || box[0].Kind != "push" || box[0].Subject != "Guardian: Výhrůžky násilím" || box[0].Text != "v chatu Kuba" {
 		t.Fatalf("after the first look only the parents' push: %+v", box)
 	}
 	// The next look sends the child's e-mail.
@@ -163,10 +163,10 @@ func TestParentsFirstThenChildCanAskForHelp(t *testing.T) {
 	if !strings.Contains(page, "Díky. Rodiče teď vědí, že potřebuješ pomoc.") {
 		t.Fatal("no thanks")
 	}
-	if b := outbox(t, do)[0]; b.Kind != "push" || b.Text != "Dítě žádá o pomoc: Výhrůžky v chatu Kuba" {
+	if b := outbox(t, do)[0]; b.Kind != "push" || b.Text != "Dítě žádá o pomoc: Výhrůžky násilím v chatu Kuba" {
 		t.Fatalf("help push: %+v", b)
 	}
-	if !strings.Contains(do("GET", "/", nil).Body.String(), "Dítě žádá o pomoc: Výhrůžky v chatu Kuba") {
+	if !strings.Contains(do("GET", "/", nil).Body.String(), "Dítě žádá o pomoc: Výhrůžky násilím v chatu Kuba") {
 		t.Fatal("no help banner")
 	}
 	fin := do("GET", "/findings", nil).Body.String()
@@ -188,7 +188,7 @@ func TestFalseAlarmBeforeTheChildHears(t *testing.T) {
 	a, do := practiceApp(t)
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
-	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"x"}, "chat_name": {"X"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"x"}, "chat_name": {"X"}, "text": {"[Výhrůžky násilím]"}})
 	do("POST", "/dev/analysis/run", nil)
 	fs, _ := a.store.Findings(context.Background())
 	do("POST", "/findings/"+itoa(fs[0].ID)+"/false_alarm", nil)
@@ -202,7 +202,7 @@ func TestDigestGoesToParentsThenTheChildHears(t *testing.T) {
 	_, do := practiceApp(t)
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
-	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"p"}, "chat_name": {"P"}, "text": {"[Urážky a ponižování]"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"p"}, "chat_name": {"P"}, "text": {"[Opakované ponižování]"}})
 	do("POST", "/dev/analysis/run", nil)
 	do("POST", "/dev/analysis/run", nil)
 	if len(outbox(t, do)) != 0 {
@@ -217,7 +217,7 @@ func TestDigestGoesToParentsThenTheChildHears(t *testing.T) {
 		}
 		if strings.HasPrefix(b.Subject, "Guardian: týden ") {
 			digests++
-			if b.To != "mama@example.cz" || !strings.Contains(b.Text, "Urážky a ponižování") {
+			if b.To != "mama@example.cz" || !strings.Contains(b.Text, "Opakované ponižování") {
 				t.Fatalf("digest: %+v", b)
 			}
 		}
@@ -362,7 +362,7 @@ func TestChildMailFailureIsShownAndRetried(t *testing.T) {
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
 	do("POST", "/dev/mail/unreachable", url.Values{"on": {"1"}})
-	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"f"}, "chat_name": {"F"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"f"}, "chat_name": {"F"}, "text": {"[Výhrůžky násilím]"}})
 	do("POST", "/dev/analysis/run", nil)
 	do("POST", "/dev/analysis/run", nil)
 	if !strings.Contains(do("GET", "/", nil).Body.String(), "E-mail dítěti neodešel: zkušební pošta je nedostupná") {
@@ -388,7 +388,7 @@ func TestChildSeesResolvedAndBadAddressesAreSaid(t *testing.T) {
 	a, do := practiceApp(t)
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
-	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"r"}, "chat_name": {"R"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"r"}, "chat_name": {"R"}, "text": {"[Výhrůžky násilím]"}})
 	do("POST", "/dev/analysis/run", nil)
 	do("POST", "/dev/analysis/run", nil)
 	var link string

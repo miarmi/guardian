@@ -7,64 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
-
-// Model types (SPEC.md criterion 12).
-const (
-	modelAnthropic = "anthropic"
-	modelOpenAI    = "openai"
-	modelPractice  = "practice"
-
-	defaultAnthropicAddress = "https://api.anthropic.com"
-	defaultAnthropicModel   = "claude-sonnet-5-5"
-)
-
-// modelSettings is what Nastavení holds; the key lives in secrets/ only.
-type modelSettings struct {
-	Type    string
-	Address string
-	Model   string
-	Key     string
-	Limit   int
-}
-
-// ready says whether enough is filled in to ask the model anything.
-func (m modelSettings) ready() bool {
-	switch m.Type {
-	case modelAnthropic:
-		return m.Key != "" && m.Address != "" && m.Model != ""
-	case modelOpenAI:
-		return m.Address != "" && m.Model != ""
-	case modelPractice:
-		return true
-	}
-	return false
-}
-
-// destination says who receives the messages' text (criterion 13): a host,
-// or "" when it stays on this server or a private network.
-func (m modelSettings) destination() string {
-	if m.Type == modelPractice {
-		return ""
-	}
-	u, err := url.Parse(m.Address)
-	if err != nil || u.Hostname() == "" {
-		return m.Address
-	}
-	host := u.Hostname()
-	if host == "localhost" || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
-		return ""
-	}
-	if ip := net.ParseIP(host); ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
-		return ""
-	}
-	return host
-}
 
 // chatModel asks a model one question with a system prompt and returns its
 // text answer.
@@ -72,6 +19,7 @@ type chatModel interface {
 	Ask(ctx context.Context, system, question string) (string, error)
 }
 
+// modelHTTP bounds a question even when the caller gave no deadline.
 var modelHTTP = &http.Client{Timeout: 3 * time.Minute}
 
 func newChatModel(m modelSettings) (chatModel, error) {
@@ -84,6 +32,7 @@ func newChatModel(m modelSettings) (chatModel, error) {
 	return nil, fmt.Errorf("unknown model type %q", m.Type)
 }
 
+// anthropicModel speaks the Anthropic Messages API.
 type anthropicModel struct{ m modelSettings }
 
 func (a anthropicModel) Ask(ctx context.Context, system, question string) (string, error) {
@@ -124,6 +73,8 @@ func (a anthropicModel) Ask(ctx context.Context, system, question string) (strin
 	return b.String(), nil
 }
 
+// openAIModel speaks the OpenAI-compatible chat completions API (OpenAI,
+// OpenRouter, Ollama, LM Studio and the like).
 type openAIModel struct{ m modelSettings }
 
 func (o openAIModel) Ask(ctx context.Context, system, question string) (string, error) {

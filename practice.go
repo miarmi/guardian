@@ -2,9 +2,6 @@ package guardian
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -63,6 +60,8 @@ func (p *practice) StartPairing(ctx context.Context) error {
 	return nil
 }
 
+// nextCodeLocked offers the next code; after practiceCodes the pairing
+// expires, as the real one does. Call it with p.mu held.
 func (p *practice) nextCodeLocked() {
 	p.codes++
 	if p.codes > practiceCodes {
@@ -87,7 +86,7 @@ func (p *practice) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /dev/whatsapp/next", p.next)
 	mux.HandleFunc("POST /dev/whatsapp/message", p.message)
 	mux.HandleFunc("POST /dev/whatsapp/remove", p.remove)
-	mux.HandleFunc("POST /dev/whatsapp/unreachable", p.setUnreachable)
+	mux.HandleFunc("POST /dev/whatsapp/unreachable", toggle(p.setUnreachable))
 	mux.HandleFunc("GET /dev/whatsapp/messages", p.messages)
 }
 
@@ -122,24 +121,16 @@ func (p *practice) remove(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (p *practice) setUnreachable(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
+func (p *practice) setUnreachable(on bool) {
 	p.mu.Lock()
-	p.unreachable = r.PostForm.Get("on") == "1"
+	p.unreachable = on
 	p.mu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
 }
 
 var practiceKinds = map[string]bool{"text": true, "image": true, "video": true, "audio": true, "sticker": true, "document": true}
 
 func (p *practice) message(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
+	if !parseForm(w, r, 64<<10) {
 		return
 	}
 	f := r.PostForm
@@ -190,7 +181,7 @@ func (p *practice) messages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	type kept struct {
+	type kept struct { // what the test sees of a kept message
 		SenderName string `json:"sender_name"`
 		FromMe     bool   `json:"from_me"`
 		Kind       string `json:"kind"`
@@ -201,13 +192,5 @@ func (p *practice) messages(w http.ResponseWriter, r *http.Request) {
 	for _, m := range msgs {
 		out = append(out, kept{m.SenderName, m.FromMe, m.Kind, m.Text, m.At.UTC().Format(time.RFC3339)})
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(out)
-}
-
-func randomID() string {
-	b := make([]byte, 8)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	writeJSON(w, out)
 }
