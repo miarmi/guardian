@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Guardian</title>
+<meta name="theme-color" content="#3b4a8a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Guardian">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Guardian</h1>
+    <p class="env">Environment: {{.EnvText}}</p>
+  </header>
+
+  <section aria-labelledby="connectors-heading">
+    <h2 id="connectors-heading">Connectors</h2>
+    <ul class="connectors" aria-label="Connectors">
+      <li class="connector">
+        <div class="connector-head">
+          <span class="name">WhatsApp</span>
+          <span class="state{{if .Connector.Connected}} on{{end}}">{{.Connector.StateText}}</span>
+        </div>
+        {{if .Connector.Available}}
+        <div class="actions">
+          {{if .Connector.Connected}}
+          <form method="post" action="/whatsapp/disconnect">
+            <button type="submit" class="secondary">Disconnect</button>
+          </form>
+          {{else}}
+          <form method="post" action="/whatsapp/connect">
+            <button type="submit">Connect WhatsApp</button>
+          </form>
+          {{end}}
+        </div>
+        {{end}}
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="chats-heading">
+    <h2 id="chats-heading">Chats</h2>
+    {{if .Chats}}
+    <ul class="chats" aria-label="Chats">
+      {{range .Chats}}<li>
+        <span class="chat-name">{{if .Name}}{{.Name}}{{else}}{{.JID}}{{end}}{{if .IsGroup}} <span class="tag">group</span>{{end}}</span>
+        <span class="chat-meta">{{.Count}} {{if eq .Count 1}}message{{else}}messages{{end}} · last {{when .Last}}</span>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">{{.NoChats}}</p>
+    {{end}}
+  </section>
+</main>
+<footer>Version: {{.Version}}</footer>
+</body>
+</html>

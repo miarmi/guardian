@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Connect WhatsApp – Guardian</title>
+<meta name="theme-color" content="#3b4a8a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="back"><a href="/">‹ Guardian</a></p>
+    <h1>Connect WhatsApp</h1>
+  </header>
+
+  <p class="instruction">Open WhatsApp on the phone, go to Linked devices, and scan this code.</p>
+
+  <div class="qr" id="qr" data-state="{{.State}}">
+    <img id="qr-image" src="/whatsapp/qr.png" alt="QR code to scan in WhatsApp" width="288" height="288"{{if not .HasQR}} hidden{{end}}>
+    <p id="qr-waiting" class="waiting"{{if .HasQR}} hidden{{end}}>Getting a code…</p>
+  </div>
+
+  <p class="hint">The phone will show a linked device named <strong>Guardian</strong>. It can be removed there at any time.</p>
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <form method="post" action="/whatsapp/connect" id="retry" hidden>
+    <p class="status">The code expired.</p>
+    <button type="submit">Try again</button>
+  </form>
+</main>
+<footer>Version: {{.Version}}</footer>
+<script src="/static/connect.js"></script>
+</body>
+</html>
