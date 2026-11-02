@@ -701,7 +701,7 @@ func (s *store) AddHelpRequest(ctx context.Context, message string, stamp func(t
 				old = stamp(time.Unix(created, 0)) + " " + old
 			}
 			if old != "" {
-				old += "\n\n"
+				old += "\n"
 			}
 			old += stamp(now) + " " + message
 			merged = true

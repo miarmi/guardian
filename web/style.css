@@ -161,7 +161,8 @@ details[open] > summary::after { transform: rotate(90deg); }
 .finding-head .sit-name { flex-basis: 100%; }
 .chip { white-space: nowrap; }
 .settings-section fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-.banner-more { font-weight: 400; opacity: 0.85; white-space: nowrap; }
+.banner-more { font-weight: 400; white-space: nowrap; }
+.requests .child-message strong { display: block; }
 .finding.serious { border-left: 4px solid var(--danger); }
 .finding.closed { opacity: 0.75; }
 .reason { margin: 0.5rem 0; }
