@@ -15,22 +15,24 @@
   <header>
     <p class="back"><a href="/">{{t "back"}}</a></p>
     <h1>{{t "sit_title"}}</h1>
-    <p class="intro">{{t "sit_intro"}} {{t "sens_help"}}</p>
+    <p class="intro">{{t "sit_intro"}}</p>
   </header>
   {{if .Error}}<p class="status-line warn" role="alert">{{.Error}}</p>{{end}}
   <ul class="situations" aria-label="{{t "sit_title"}}">
     {{range .Situations}}
-    <li class="situation{{if not .Enabled}} off{{end}}">
-      <details>
+    <li class="situation{{if not .Enabled}} off{{end}}" id="sit-{{.ID}}">
+      <details{{if eq $.Saved .ID}} open{{end}}>
         <summary>
           <span class="sit-name">{{.Name}}</span>
           <span class="sit-meta">{{if .Enabled}}{{t (printf "act_%s" .Action)}} · {{t "f_sens"}}: {{t (printf "sens_%s" .Sensitivity)}}{{else}}{{t "sit_off"}}{{end}}</span>
         </summary>
+        {{if eq $.Saved .ID}}<p class="status-line ok" role="status">{{t "sit_saved"}}</p>{{end}}
+        {{if .Builtin}}<p class="note">{{t "sit_builtin_long"}}</p>{{end}}
         <form method="post" action="/situations/{{.ID}}" class="form">
           {{template "fields" .}}
           <div class="choices">
             <button type="submit">{{t "save"}}</button>
-            {{if .Builtin}}<span class="note">{{t "sit_builtin"}}</span>{{else}}<button type="submit" name="delete" value="1" class="secondary">{{t "sit_delete"}}</button>{{end}}
+            {{if not .Builtin}}<button type="submit" name="delete" value="1" class="secondary" formnovalidate>{{t "sit_delete"}}</button>{{end}}
           </div>
         </form>
       </details>
@@ -53,14 +55,15 @@
           <label for="name-{{.ID}}">{{t "f_name"}}</label>
           <input id="name-{{.ID}}" name="name" type="text" maxlength="80" required value="{{.Name}}">
           <label for="desc-{{.ID}}">{{t "f_desc"}}</label>
-          <textarea id="desc-{{.ID}}" name="description" rows="3" maxlength="1000" required>{{.Description}}</textarea>
+          <textarea id="desc-{{.ID}}" name="description" rows="5" maxlength="1000" required>{{.Description}}</textarea>
           <label for="sens-{{.ID}}">{{t "f_sens"}}</label>
           <select id="sens-{{.ID}}" name="sensitivity">
             {{$s := .Sensitivity}}{{range $v := list "low" "medium" "high"}}<option value="{{$v}}"{{if eq $s $v}} selected{{end}}>{{t (printf "sens_%s" $v)}}</option>{{end}}
           </select>
+          <p class="note">{{t "sens_hint"}}</p>
           <label for="act-{{.ID}}">{{t "f_action"}}</label>
           <select id="act-{{.ID}}" name="action">
             {{$a := .Action}}{{range $v := list "record" "digest" "alert"}}<option value="{{$v}}"{{if eq $a $v}} selected{{end}}>{{t (printf "act_%s" $v)}}</option>{{end}}
           </select>
-          <label class="check"><input type="checkbox" name="enabled" value="1"{{if .Enabled}} checked{{end}}> {{t "f_enabled"}}</label>
+          <label class="check switch"><input type="checkbox" role="switch" name="enabled" value="1"{{if .Enabled}} checked{{end}}> {{t "f_enabled"}}</label>
 {{end}}

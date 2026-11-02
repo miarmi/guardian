@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}}</a>{{end}}
+  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}} <span class="banner-go">{{t "open_arrow"}}</span></a>{{end}}
   <header>
     <div class="title-row">
       <h1>Guardian</h1>
@@ -53,11 +53,11 @@
   <section aria-labelledby="analysis-heading">
     <h2 id="analysis-heading">{{t "analysis"}}</h2>
     {{with .Analysis}}
-    {{if .State.NoModel}}<p class="status-line warn">{{t "no_model"}} <a href="/settings">{{t "nav_settings"}}</a></p>
+    {{if .State.NoModel}}<p class="status-line warn">{{t "no_model"}} <a href="/settings">{{t "settings_arrow"}}</a></p>
     {{else}}
-      {{if .State.Error}}<p class="status-line warn">{{t "an_failed" .State.Error}}</p>
-      {{else if .State.Limited}}<p class="status-line warn">{{t "an_limit"}}</p>
-      {{else}}<p class="status-line">{{t "an_running"}}</p>{{end}}
+      {{if .State.Error}}<p class="status-line warn">{{t "an_failed" .State.Error}}{{if not .State.NextRun.IsZero}} {{t "next_try" (clock .State.NextRun)}}{{end}} <a href="/settings">{{t "settings_arrow"}}</a></p>
+      {{else if .State.Limited}}<p class="status-line caution">{{t "an_limit"}} <a href="/settings">{{t "settings_arrow"}}</a></p>
+      {{else}}<p class="status-line ok">{{t "an_running"}}{{if not .State.LastRun.IsZero}} {{t "last_run" (when .State.LastRun)}}{{end}}</p>{{end}}
       <p class="note">{{if .Destination}}{{t "goes_to" .Destination}}{{else}}{{t "stays_home"}}{{end}}</p>
     {{end}}
     {{end}}
@@ -69,7 +69,7 @@
     <p class="note">{{t "chats_note"}}</p>
     <ul class="chats" aria-label="{{t "chats"}}">
       {{range .Chats}}<li>
-        <span class="chat-name">{{if .Name}}{{.Name}}{{else}}{{.JID}}{{end}}</span>
+        <span class="chat-name">{{if .Name}}{{.Name}}{{else}}{{.JID}}{{end}}{{if .Suffix}} <span class="suffix">{{.Suffix}}</span>{{end}}</span>
         <span class="chat-meta">{{if .IsGroup}}{{t "group"}} · {{end}}{{count .Count}} · {{when .Last}}</span>
       </li>
       {{end}}

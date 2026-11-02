@@ -3,6 +3,7 @@ package guardian
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -52,46 +53,67 @@ type settingsData struct {
 	Ready       bool
 	Result      string
 	ResultOK    bool
+	Tried       string // "<model> na <host>" after Vyzkoušet
 	Saved       bool
+	Forgot      bool // the key was forgotten because type or host changed
+	NoKey       bool // saved a type that needs a key, without one
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
-	a.renderSettings(w, r, "", false)
+	q := r.URL.Query()
+	d := settingsData{Saved: q.Get("saved") == "1", Forgot: q.Get("forgot") == "1", NoKey: q.Get("nokey") == "1"}
+	if a.an != nil {
+		d.S = a.an.settings(r.Context())
+	}
+	a.renderSettings(w, r, d)
 }
 
-func (a *App) renderSettings(w http.ResponseWriter, r *http.Request, result string, ok bool) {
-	d := settingsData{Lang: a.lang.code, Version: a.version, Result: result, ResultOK: ok, Saved: r.URL.Query().Get("saved") == "1"}
+func keyHint(k string) string {
+	if k == "" {
+		return ""
+	}
+	if n := utf8.RuneCountInString(k); n > 4 {
+		k = string([]rune(k)[n-4:])
+	}
+	return "…" + k
+}
+
+// renderSettings shows the form with d.S in it (saved or as typed).
+func (a *App) renderSettings(w http.ResponseWriter, r *http.Request, d settingsData) {
+	d.Lang, d.Version = a.lang.code, a.version
 	if a.an != nil {
 		d.Available = true
-		d.S = a.an.settings(r.Context())
 		if d.S.Type == "" {
 			d.S.Type = modelAnthropic
 		}
-		if d.S.Key != "" {
-			k := d.S.Key
-			if utf8.RuneCountInString(k) > 4 {
-				k = string([]rune(k)[utf8.RuneCountInString(k)-4:])
-			}
-			d.KeyHint = "…" + k
-			d.S.Key = ""
+		saved := a.an.settings(r.Context())
+		// The saved key is offered only while type and host still match it.
+		if sameEndpoint(saved, d.S) {
+			d.KeyHint = keyHint(saved.Key)
 		}
 		d.Practice = a.dev != nil
-		d.Ready = a.an.settings(r.Context()).ready()
-		d.Destination = a.an.settings(r.Context()).destination()
+		d.Ready = saved.ready()
+		d.Destination = d.S.destination()
+		d.S.Key = ""
 	}
 	a.render(w, a.pages["settings"], http.StatusOK, d)
 }
 
-func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
-	if a.an == nil {
-		http.Redirect(w, r, "/settings", http.StatusSeeOther)
-		return
+// sameEndpoint says whether a key saved for one model may be used for
+// another: same type and same host (criterion 12).
+func sameEndpoint(x, y modelSettings) bool {
+	return x.Type == y.Type && hostOf(x.Address) == hostOf(y.Address)
+}
+
+func hostOf(addr string) string {
+	if u, err := url.Parse(strings.TrimSpace(addr)); err == nil {
+		return strings.ToLower(u.Host)
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
+	return addr
+}
+
+// settingsFromForm reads the form; Anthropic gets its defaults filled in.
+func (a *App) settingsFromForm(r *http.Request) modelSettings {
 	f := r.PostForm
 	m := modelSettings{Type: f.Get("type"), Address: strings.TrimSpace(f.Get("address")), Model: strings.TrimSpace(f.Get("model")), Limit: defaultLimit}
 	switch m.Type {
@@ -113,24 +135,78 @@ func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if n, err := strconv.Atoi(strings.TrimSpace(f.Get("limit"))); err == nil && n >= 0 {
 		m.Limit = n
+	} else if a.an != nil {
+		m.Limit = a.an.settings(r.Context()).Limit
 	}
-	if err := a.an.saveSettings(r.Context(), m, strings.TrimSpace(f.Get("key"))); err != nil {
+	return m
+}
+
+func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
+	if a.an == nil {
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	m := a.settingsFromForm(r)
+	newKey := strings.TrimSpace(r.PostForm.Get("key"))
+	saved := a.an.settings(r.Context())
+	forgot := newKey == "" && saved.Key != "" && !sameEndpoint(saved, m)
+	if err := a.an.saveSettings(r.Context(), m, newKey, forgot); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/settings?saved=1", http.StatusSeeOther)
+	dest := "/settings?saved=1"
+	if forgot {
+		dest += "&forgot=1"
+	}
+	if m.Type == modelAnthropic && !a.an.settings(r.Context()).ready() {
+		dest += "&nokey=1"
+	}
+	http.Redirect(w, r, dest, http.StatusSeeOther)
 }
 
+// testModel tries the model as filled in on the page, without saving it
+// (criterion 12). A typed key is used; otherwise the saved one, but only for
+// the same type and host.
 func (a *App) testModel(w http.ResponseWriter, r *http.Request) {
 	if a.an == nil {
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
 		return
 	}
-	if err := a.an.test(r.Context()); err != nil {
-		a.renderSettings(w, r, a.lang.T("model_bad", err.Error()), false)
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
-	a.renderSettings(w, r, a.lang.T("model_ok"), true)
+	m := a.settingsFromForm(r)
+	saved := a.an.settings(r.Context())
+	if k := strings.TrimSpace(r.PostForm.Get("key")); k != "" {
+		m.Key = k
+	} else if sameEndpoint(saved, m) {
+		m.Key = saved.Key
+	}
+	d := settingsData{S: m}
+	if m.Type != modelPractice {
+		d.Tried = a.lang.T("tried", m.Model, hostOf(m.Address))
+	}
+	err := a.an.test(r.Context(), m)
+	if err != nil {
+		d.Result = a.lang.T("model_bad", a.lang.explain(err))
+	} else {
+		d.Result, d.ResultOK = a.lang.T("model_ok"), true
+	}
+	// Testing what is saved also tells the overview how it stands.
+	if m.Type == saved.Type && m.Address == saved.Address && m.Model == saved.Model && m.Key == saved.Key {
+		a.an.noteTest(err)
+	}
+	if m.Key != "" && m.Key != saved.Key {
+		d.KeyHint = "" // a typed key is not echoed back; it has to be typed again to save it
+	}
+	a.renderSettings(w, r, d)
 }
 
 // --- Situace ---
@@ -140,6 +216,7 @@ type situationsData struct {
 	Version    string
 	Situations []Situation
 	Error      string
+	Saved      int64 // the situation just saved, kept open
 }
 
 func (a *App) situationsPage(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +229,8 @@ func (a *App) renderSituations(w http.ResponseWriter, r *http.Request, status in
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	a.render(w, a.pages["situations"], status, situationsData{Lang: a.lang.code, Version: a.version, Situations: sits, Error: errText})
+	saved, _ := strconv.ParseInt(r.URL.Query().Get("saved"), 10, 64)
+	a.render(w, a.pages["situations"], status, situationsData{Lang: a.lang.code, Version: a.version, Situations: sits, Error: errText, Saved: saved})
 }
 
 var (
@@ -204,6 +282,10 @@ func (a *App) updateSituation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.PostForm.Get("delete") == "1" {
+		if r.PostForm.Get("confirmed") != "1" { // ask first
+			http.Redirect(w, r, "/situations/"+strconv.FormatInt(id, 10)+"/delete", http.StatusSeeOther)
+			return
+		}
 		if err := a.store.DeleteSituation(r.Context(), id); err != nil {
 			http.Error(w, "could not delete", http.StatusInternalServerError)
 			return
@@ -221,7 +303,22 @@ func (a *App) updateSituation(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/situations", http.StatusSeeOther)
+	http.Redirect(w, r, "/situations?saved="+strconv.FormatInt(id, 10)+"#sit-"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// deleteSituationPage asks before deleting an added situation.
+func (a *App) deleteSituationPage(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/situations", http.StatusSeeOther)
+		return
+	}
+	x, err := a.store.Situation(r.Context(), id)
+	if err != nil || x.Builtin {
+		http.Redirect(w, r, "/situations", http.StatusSeeOther)
+		return
+	}
+	a.render(w, a.pages["delete"], http.StatusOK, map[string]any{"Lang": a.lang.code, "Version": a.version, "S": x})
 }
 
 // --- Nálezy ---
@@ -249,7 +346,7 @@ func (a *App) markFinding(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
-	status := map[string]string{"resolved": "resolved", "false_alarm": "false_alarm"}[r.PathValue("status")]
+	status := map[string]string{"resolved": "resolved", "false_alarm": "false_alarm", "open": "open"}[r.PathValue("status")]
 	if status == "" {
 		http.Error(w, "bad status", http.StatusBadRequest)
 		return

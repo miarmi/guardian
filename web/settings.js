@@ -1,23 +1,62 @@
-// Shows the fields that fit the chosen model type and fills in the
-// Anthropic defaults when that type is chosen.
+// Shows the fields that fit the chosen model type, fills in the Anthropic
+// defaults, says at once where the messages would go, and warns when the
+// saved key no longer fits the type or address.
 (function () {
   var form = document.getElementById("settings-form");
   if (!form) return;
+  var d = form.dataset;
   var type = document.getElementById("type");
   var remote = document.getElementById("remote-fields");
   var hint = document.getElementById("openai-hint");
   var address = document.getElementById("address");
   var model = document.getElementById("model");
-  var defAddr = form.dataset.anthropicAddress, defModel = form.dataset.anthropicModel;
-  type.addEventListener("change", function () {
+  var dest = document.getElementById("destination");
+  var keyNote = document.getElementById("key-note");
+  var keyNoteText = keyNote ? keyNote.textContent : "";
+  var keyFor = d.keyHost; // "type address" the saved key belongs to, "" if none
+
+  function host(addr) {
+    try { return new URL(addr).hostname.toLowerCase(); } catch (e) { return ""; }
+  }
+  function isHome(h) {
+    if (!h) return false;
+    if (h === "localhost" || /\.local$/.test(h) || /\.internal$/.test(h) || h === "::1" || h === "[::1]") return true;
+    var m = h.match(/^(\d+)\.(\d+)\.\d+\.\d+$/);
+    if (!m) return false;
+    var a = +m[1], b = +m[2];
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  }
+  function update() {
     remote.hidden = type.value === "practice";
     hint.hidden = type.value !== "openai";
+    var h = type.value === "practice" ? "" : host(address.value);
+    if (type.value === "practice" || isHome(h)) {
+      dest.textContent = d.staysHome;
+    } else {
+      dest.textContent = d.goesTo.replace("%s", h || address.value);
+    }
+    if (keyNote && keyFor) {
+      var parts = keyFor.split(" ");
+      var same = parts[0] === type.value && host(parts.slice(1).join(" ")) === host(address.value);
+      keyNote.textContent = same ? keyNoteText : d.keyForgotten;
+    }
+  }
+  type.addEventListener("change", function () {
     if (type.value === "anthropic") {
-      if (!address.value) address.value = defAddr;
-      if (!model.value) model.value = defModel;
+      if (!address.value) address.value = d.anthropicAddress;
+      if (!model.value) model.value = d.anthropicModel;
     } else if (type.value === "openai") {
-      if (address.value === defAddr) address.value = "";
-      if (model.value === defModel) model.value = "";
+      if (address.value === d.anthropicAddress) address.value = "";
+      if (model.value === d.anthropicModel) model.value = "";
+    }
+    update();
+  });
+  address.addEventListener("input", update);
+  form.addEventListener("submit", function (e) {
+    var b = e.submitter;
+    if (b && b.id === "test-button") {
+      setTimeout(function () { b.disabled = true; b.textContent = d.testing; }, 0);
     }
   });
+  update();
 })();

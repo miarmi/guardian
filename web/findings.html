@@ -21,18 +21,27 @@
   <ul class="findings" aria-label="{{t "fin_title"}}">
     {{range .Findings}}
     <li class="finding{{if ne .Status "open"}} closed{{end}}{{if eq .Situation.Action "alert"}} serious{{end}}">
+      {{if eq .Status "open"}}
       <div class="finding-head">
         <span class="sit-name">{{.Situation.Name}}</span>
-        {{if eq .Status "resolved"}}<span class="chip">{{t "fin_marked_resolved"}}</span>{{else if eq .Status "false_alarm"}}<span class="chip">{{t "fin_marked_false"}}</span>{{end}}
+        {{if eq .Situation.Action "alert"}}<span class="chip alert-chip">{{t "chip_alert"}}</span>{{end}}
       </div>
-      <p class="chat-meta">{{t "fin_in_chat" (or .ChatName .Chat)}} · {{when .Updated}}</p>
-      <p class="reason">{{.Reason}}</p>
-      {{range .Quotes}}<blockquote><span class="who">{{if .FromMe}}{{t "child"}}{{else}}{{.SenderName}}{{end}}</span> {{.Text}}</blockquote>{{end}}
-      {{if eq .Status "open"}}
+      {{template "body" .}}
       <div class="choices">
         <form method="post" action="/findings/{{.ID}}/resolved"><button type="submit">{{t "fin_resolved"}}</button></form>
         <form method="post" action="/findings/{{.ID}}/false_alarm"><button type="submit" class="secondary">{{t "fin_false"}}</button></form>
       </div>
+      {{else}}
+      <details>
+        <summary>
+          <span class="sit-name">{{.Situation.Name}}</span>
+          <span class="sit-meta">{{or .ChatName .Chat}} · {{if eq .Status "resolved"}}{{t "fin_marked_resolved"}}{{else}}{{t "fin_marked_false"}}{{end}}</span>
+        </summary>
+        {{template "body" .}}
+        <div class="choices">
+          <form method="post" action="/findings/{{.ID}}/open"><button type="submit" class="secondary">{{t "fin_reopen"}}</button></form>
+        </div>
+      </details>
       {{end}}
     </li>
     {{end}}
@@ -44,3 +53,8 @@
 <footer>{{t "version"}}: {{.Version}}</footer>
 </body>
 </html>
+{{define "body"}}
+      <p class="chat-meta">{{t "fin_in_chat" (or .ChatName .Chat)}} · {{when .Updated}}</p>
+      <p class="reason">{{.Reason}}</p>
+      {{range .Quotes}}<blockquote><span class="who">{{if .FromMe}}{{t "child"}}{{else}}{{.SenderName}}{{end}}</span> {{.Text}}</blockquote>{{end}}
+{{end}}

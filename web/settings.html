@@ -20,10 +20,14 @@
   {{if not .Available}}
   <p class="note">{{t "an_preview"}}</p>
   {{else}}
-  {{if .Saved}}<p class="status-line" role="status">{{t "saved"}}</p>{{end}}
-  {{if .Result}}<p class="status-line{{if not .ResultOK}} warn{{end}}" role="status">{{.Result}}</p>{{end}}
+  {{if .Saved}}<p class="status-line ok" role="status">{{t "saved"}}</p>{{end}}
+  {{if .Forgot}}<p class="status-line caution" role="status">{{t "key_forgotten"}}</p>{{end}}
+  {{if .NoKey}}<p class="status-line caution" role="status">{{t "nokey_warn"}}</p>{{end}}
+  {{if .Result}}<p class="status-line{{if .ResultOK}} ok{{else}} warn{{end}}" role="status">{{.Result}}</p>{{if .Tried}}<p class="note">{{.Tried}}</p>{{end}}{{end}}
   <form method="post" action="/settings" class="form" id="settings-form"
-        data-anthropic-address="https://api.anthropic.com" data-anthropic-model="claude-sonnet-5-5">
+        data-anthropic-address="https://api.anthropic.com" data-anthropic-model="claude-sonnet-5-5"
+        data-goes-to="{{t "goes_to" "%s"}}" data-stays-home="{{t "stays_home"}}" data-testing="{{t "testing"}}"
+        data-key-host="{{if .KeyHint}}{{.S.Type}} {{.S.Address}}{{end}}" data-key-forgotten="{{t "key_forgotten"}}">
     <label for="type">{{t "f_type"}}</label>
     <select id="type" name="type">
       <option value="anthropic"{{if eq .S.Type "anthropic"}} selected{{end}}>{{t "t_anthropic"}}</option>
@@ -34,21 +38,22 @@
 
     <div class="fields" id="remote-fields"{{if eq .S.Type "practice"}} hidden{{end}}>
       <label for="address">{{t "f_address"}}</label>
-      <input id="address" name="address" type="url" inputmode="url" autocomplete="off" spellcheck="false" value="{{.S.Address}}">
+      <input id="address" name="address" type="url" inputmode="url" autocomplete="off" spellcheck="false" value="{{.S.Address}}" placeholder="{{t "ph_openai"}}">
       <label for="model">{{t "f_model"}}</label>
-      <input id="model" name="model" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" value="{{.S.Model}}">
+      <input id="model" name="model" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" value="{{.S.Model}}" placeholder="{{t "ph_model"}}">
       <label for="key">{{t "f_key"}}</label>
       <input id="key" name="key" type="password" autocomplete="off" value=""{{if .KeyHint}} placeholder="{{.KeyHint}}"{{end}}>
-      <p class="note">{{if .KeyHint}}{{t "key_saved" .KeyHint}}{{else}}{{t "key_none"}}{{end}}</p>
+      <p class="note" id="key-note">{{if .KeyHint}}{{t "key_saved" .KeyHint}}{{else}}{{t "key_none"}}{{end}}</p>
     </div>
 
     <label for="limit">{{t "f_limit"}}</label>
     <input id="limit" name="limit" type="number" inputmode="numeric" min="0" max="100000" value="{{.S.Limit}}">
+    <p class="note">{{t "limit_hint"}}</p>
 
-    <p class="note">{{if .Destination}}{{t "goes_to" .Destination}}{{else}}{{t "stays_home"}}{{end}}</p>
+    <p class="destination" id="destination">{{if .Destination}}{{t "goes_to" .Destination}}{{else}}{{t "stays_home"}}{{end}}</p>
     <div class="choices">
       <button type="submit">{{t "save"}}</button>
-      <button type="submit" class="secondary" formaction="/settings/test">{{t "test"}}</button>
+      <button type="submit" class="secondary" formaction="/settings/test" id="test-button">{{t "test"}}</button>
     </div>
   </form>
   {{end}}

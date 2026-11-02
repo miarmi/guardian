@@ -144,6 +144,7 @@ func newApp(st *store, wa connector, cfg Config) *App {
 		"count": l.count,
 		"t":     l.T,
 		"list":  func(v ...string) []string { return v },
+		"clock": func(t time.Time) string { return t.In(zone).Format("15:04") },
 		"newSituation": func() Situation {
 			return Situation{Sensitivity: "medium", Action: "digest", Enabled: true}
 		},
@@ -162,6 +163,7 @@ func newApp(st *store, wa connector, cfg Config) *App {
 			"settings":   template.Must(template.New("settings.html").Funcs(funcs).ParseFS(webFS, "web/settings.html")),
 			"situations": template.Must(template.New("situations.html").Funcs(funcs).ParseFS(webFS, "web/situations.html")),
 			"findings":   template.Must(template.New("findings.html").Funcs(funcs).ParseFS(webFS, "web/findings.html")),
+			"delete":     template.Must(template.New("delsituation.html").Funcs(funcs).ParseFS(webFS, "web/delsituation.html")),
 		},
 		static: http.StripPrefix("/static/", http.FileServer(http.FS(sub))),
 		icons:  makeIcons(),
@@ -203,6 +205,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /situations", a.situationsPage)
 	mux.HandleFunc("POST /situations", a.addSituation)
 	mux.HandleFunc("POST /situations/{id}", a.updateSituation)
+	mux.HandleFunc("GET /situations/{id}/delete", a.deleteSituationPage)
 	mux.HandleFunc("GET /findings", a.findingsPage)
 	mux.HandleFunc("POST /findings/{id}/{status}", a.markFinding)
 	mux.Handle("GET /static/settings.js", a.static)
@@ -265,6 +268,18 @@ func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
+	}
+	// Two chats with the same name get the end of the number to tell them apart.
+	seen := map[string]int{}
+	for _, c := range chats {
+		seen[c.Name]++
+	}
+	for i, c := range chats {
+		if c.Name != "" && seen[c.Name] > 1 && !c.IsGroup {
+			if user, _, ok := strings.Cut(c.JID, "@"); ok && len(user) > 3 {
+				chats[i].Suffix = "…" + user[len(user)-3:]
+			}
+		}
 	}
 	a.render(w, a.index, http.StatusOK, indexData{
 		Preview: a.preview, Version: a.version, Connector: a.connector(), Chats: chats, Lang: a.lang.code,

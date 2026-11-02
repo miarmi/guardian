@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -121,6 +122,31 @@ var languages = map[string]*lang{
 			"child":                "child",
 			"practice_reason":      "Practice finding.",
 			"practice_unreachable": "the practice model is unreachable",
+			"tried":                "Tried: %s at %s",
+			"key_forgotten":        "The saved key belongs to another address; enter a new one.",
+			"nokey_warn":           "Without a key the analysis won't run.",
+			"last_run":             "Last run %s.",
+			"next_try":             "Next try at %s.",
+			"open_arrow":           "Open ›",
+			"settings_arrow":       "Settings ›",
+			"testing":              "Testing…",
+			"ph_openai":            "e.g. https://api.openai.com/v1",
+			"ph_model":             "e.g. gpt-4o-mini or llama3",
+			"limit_hint":           "One question = one chat in one hourly check.",
+			"sit_saved":            "Saved.",
+			"sit_builtin_long":     "Default situation: can be switched off, not deleted.",
+			"sens_hint":            "High reports even faint signs; low only clear cases.",
+			"del_title":            "Delete situation",
+			"del_q":                "Delete situation “%s”? The description is lost; its findings stay.",
+			"del_keep":             "Keep",
+			"fin_reopen":           "Reopen",
+			"chip_alert":           "Alert at once",
+			"err_key":              "the key was refused, check it (%s)",
+			"err_notfound":         "model or address not found (404)",
+			"err_busy":             "the provider reports too many requests (429)",
+			"err_server":           "the provider has a problem (%s)",
+			"err_unreachable":      "the address doesn't answer",
+			"err_unreadable":       "the model's answer could not be read",
 		},
 		name:       "English",
 		situations: defaultSituationsEN,
@@ -244,6 +270,31 @@ var languages = map[string]*lang{
 			"child":                "dítě",
 			"practice_reason":      "Zkušební nález.",
 			"practice_unreachable": "zkušební model je nedostupný",
+			"tried":                "Vyzkoušeno: %s na %s",
+			"key_forgotten":        "Klíč patří k jiné adrese, zadej nový.",
+			"nokey_warn":           "Bez klíče analýza nepoběží.",
+			"last_run":             "Naposledy %s.",
+			"next_try":             "Další pokus v %s.",
+			"open_arrow":           "Otevřít ›",
+			"settings_arrow":       "Nastavení ›",
+			"testing":              "Zkouším…",
+			"ph_openai":            "např. https://api.openai.com/v1",
+			"ph_model":             "např. gpt-4o-mini nebo llama3",
+			"limit_hint":           "Jeden dotaz = jeden chat při jedné hodinové kontrole.",
+			"sit_saved":            "Uloženo.",
+			"sit_builtin_long":     "Výchozí situace, nejde smazat, jen vypnout.",
+			"sens_hint":            "Vysoká hlásí i slabé náznaky, nízká jen jasné případy.",
+			"del_title":            "Smazat situaci",
+			"del_q":                "Smazat situaci „%s“? Popis se ztratí, nálezy z ní zůstanou.",
+			"del_keep":             "Nechat",
+			"fin_reopen":           "Znovu otevřít",
+			"chip_alert":           "Upozornit hned",
+			"err_key":              "klíč nebyl přijat, zkontroluj ho (%s)",
+			"err_notfound":         "model nebo adresa neexistuje (404)",
+			"err_busy":             "poskytovatel hlásí příliš mnoho dotazů (429)",
+			"err_server":           "poskytovatel má potíže (%s)",
+			"err_unreachable":      "adresa neodpovídá",
+			"err_unreadable":       "odpověď modelu nešla přečíst",
 		},
 		name:       "Czech",
 		situations: defaultSituationsCS,
@@ -337,4 +388,35 @@ var defaultSituationsEN = []Situation{
 		Description: "Someone who seems to be an adult, and whom the child does not know in real life, writes to the child; especially with flattery, asking for secrets, a meeting or a move to another app."},
 	{Name: "The child is in distress", Sensitivity: "medium", Action: "alert",
 		Description: "The child writes that they feel bad, do not want to go to school, are alone with everything, or hints that they might hurt themselves."},
+}
+
+var httpCode = regexp.MustCompile(`HTTP (\d{3})`)
+
+// explain turns a model error into words for people, keeping the code.
+func (l *lang) explain(err error) string {
+	msg := err.Error()
+	low := strings.ToLower(msg)
+	if m := httpCode.FindStringSubmatch(msg); m != nil {
+		switch c := m[1]; {
+		case c == "401" || c == "403":
+			return l.T("err_key", c)
+		case c == "404":
+			return l.T("err_notfound")
+		case c == "429":
+			return l.T("err_busy")
+		case c[0] == '5':
+			return l.T("err_server", c)
+		}
+	}
+	for _, s := range []string{"timeout", "deadline exceeded", "no such host", "connection refused", "network is unreachable", "connection reset", "eof"} {
+		if strings.Contains(low, s) {
+			return l.T("err_unreachable")
+		}
+	}
+	for _, s := range []string{"could not be read", "was not json", "answer was empty"} {
+		if strings.Contains(low, s) {
+			return l.T("err_unreadable")
+		}
+	}
+	return msg
 }

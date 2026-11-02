@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +52,7 @@ func TestAnalysisWithPracticeModel(t *testing.T) {
 		}
 	}
 	do("POST", "/settings", url.Values{"type": {"practice"}, "limit": {"50"}})
-	if !strings.Contains(do("POST", "/settings/test", url.Values{}).Body.String(), "Model odpovídá.") {
+	if !strings.Contains(do("POST", "/settings/test", url.Values{"type": {"practice"}}).Body.String(), "Model odpovídá.") {
 		t.Fatal("practice model should answer")
 	}
 	page := do("GET", "/", nil).Body.String()
@@ -125,8 +126,8 @@ func TestSituationsEditable(t *testing.T) {
 	if added.ID == 0 || added.Builtin || !added.Enabled {
 		t.Fatalf("added: %+v", added)
 	}
-	do("POST", "/situations/"+itoa(builtin.ID), url.Values{"delete": {"1"}})
-	do("POST", "/situations/"+itoa(added.ID), url.Values{"delete": {"1"}})
+	do("POST", "/situations/"+itoa(builtin.ID), url.Values{"delete": {"1"}, "confirmed": {"1"}})
+	do("POST", "/situations/"+itoa(added.ID), url.Values{"delete": {"1"}, "confirmed": {"1"}})
 	sits2, _ := a.store.Situations(context.Background())
 	if len(sits2) != len(sits)-1 {
 		t.Fatalf("builtin must stay, added must go: %d -> %d", len(sits), len(sits2))
@@ -204,3 +205,97 @@ func TestRealModelsSpeakTheirAPIs(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestTestUsesTheFormAndKeepsIt(t *testing.T) {
+	_, do := practiceApp(t)
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	// Anthropic without a key: tested as typed, not as saved; form kept.
+	page := do("POST", "/settings/test", url.Values{"type": {"anthropic"}}).Body.String()
+	if strings.Contains(page, "Model odpovídá.") || !strings.Contains(page, "Model neodpovídá") {
+		t.Fatal("tested the saved model instead of the form")
+	}
+	if !strings.Contains(page, `<option value="anthropic" selected>`) {
+		t.Fatal("form not kept")
+	}
+}
+
+func TestKeyIsForgottenForAnotherAddress(t *testing.T) {
+	a, do := practiceApp(t)
+	do("POST", "/settings", url.Values{"type": {"anthropic"}, "key": {"sk-ant-secret-wxyz"}})
+	rec := do("POST", "/settings", url.Values{"type": {"openai"}, "address": {"http://192.168.1.50:11434/v1"}, "model": {"llama3"}})
+	if !strings.Contains(rec.Header().Get("Location"), "forgot=1") {
+		t.Fatal("forgetting not reported")
+	}
+	if a.an.settings(context.Background()).Key != "" {
+		t.Fatal("key kept for another address")
+	}
+	if !strings.Contains(do("GET", "/settings?forgot=1", nil).Body.String(), "Klíč patří k jiné adrese, zadej nový.") {
+		t.Fatal("message missing")
+	}
+	// Same type and host keeps the key.
+	do("POST", "/settings", url.Values{"type": {"openai"}, "address": {"http://192.168.1.50:11434/v1"}, "model": {"llama3"}, "key": {"k-1234"}})
+	do("POST", "/settings", url.Values{"type": {"openai"}, "address": {"http://192.168.1.50:11434/v1"}, "model": {"mistral"}})
+	if a.an.settings(context.Background()).Key != "k-1234" {
+		t.Fatal("key lost on a model change at the same address")
+	}
+}
+
+func TestDeleteAsksAndKeepsFindings(t *testing.T) {
+	a, do := practiceApp(t)
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	do("POST", "/situations", url.Values{"name": {"Hazard"}, "description": {"Sázky."}, "sensitivity": {"high"}, "action": {"record"}, "enabled": {"1"}})
+	var id int64
+	sits, _ := a.store.Situations(context.Background())
+	for _, s := range sits {
+		if s.Name == "Hazard" {
+			id = s.ID
+		}
+	}
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"h"}, "chat_name": {"H"}, "text": {"[Hazard]"}})
+	do("POST", "/dev/analysis/run", nil)
+	rec := do("POST", "/situations/"+itoa(id), url.Values{"delete": {"1"}})
+	if !strings.HasSuffix(rec.Header().Get("Location"), "/delete") {
+		t.Fatal("did not ask first")
+	}
+	if !strings.Contains(do("GET", "/situations/"+itoa(id)+"/delete", nil).Body.String(), "Smazat situaci „Hazard“? Popis se ztratí, nálezy z ní zůstanou.") {
+		t.Fatal("question missing")
+	}
+	do("POST", "/situations/"+itoa(id), url.Values{"delete": {"1"}, "confirmed": {"1"}})
+	if _, err := a.store.Situation(context.Background(), id); err == nil {
+		t.Fatal("not deleted")
+	}
+	if !strings.Contains(do("GET", "/findings", nil).Body.String(), "Hazard") {
+		t.Fatal("its finding was lost")
+	}
+}
+
+func TestReopenFinding(t *testing.T) {
+	a, do := practiceApp(t)
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"r"}, "chat_name": {"R"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/analysis/run", nil)
+	fs, _ := a.store.Findings(context.Background())
+	id := itoa(fs[0].ID)
+	do("POST", "/findings/"+id+"/false_alarm", nil)
+	if !strings.Contains(do("GET", "/findings", nil).Body.String(), "Znovu otevřít") {
+		t.Fatal("no reopen")
+	}
+	do("POST", "/findings/"+id+"/open", nil)
+	if n, _ := a.store.OpenFindingCount(context.Background()); n != 1 {
+		t.Fatalf("open count %d", n)
+	}
+}
+
+func TestErrorsInPlainWords(t *testing.T) {
+	cs := pick("cs")
+	for in, want := range map[string]string{
+		"HTTP 401: invalid x-api-key":          "klíč nebyl přijat, zkontroluj ho (401)",
+		"HTTP 404":                             "model nebo adresa neexistuje (404)",
+		"dial tcp: lookup x: no such host":     "adresa neodpovídá",
+		"the model's answer could not be read": "odpověď modelu nešla přečíst",
+	} {
+		if got := cs.explain(errors.New(in)); got != want {
+			t.Errorf("%q -> %q", in, got)
+		}
+	}
+}

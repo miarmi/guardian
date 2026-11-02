@@ -27,6 +27,7 @@ type Message struct {
 type ChatSummary struct {
 	JID     string
 	Name    string
+	Suffix  string // set when another chat has the same name
 	IsGroup bool
 	Count   int
 	Last    time.Time
@@ -93,6 +94,12 @@ func openStore(path string) (*store, error) {
 			db.Close()
 			return nil, err
 		}
+	}
+	// Added later: deleted situations are hidden, their findings stay.
+	if _, err := db.Exec(`ALTER TABLE situations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		db.Close()
+		return nil, err
 	}
 	return &store{db: db}, nil
 }
@@ -237,7 +244,7 @@ func scanSituation(sc interface{ Scan(...any) error }) (Situation, error) {
 
 // Situations lists every situation, built-in ones first, in creation order.
 func (s *store) Situations(ctx context.Context) ([]Situation, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+situationCols+" FROM situations ORDER BY builtin DESC, id")
+	rows, err := s.db.QueryContext(ctx, "SELECT "+situationCols+" FROM situations WHERE deleted = 0 ORDER BY builtin DESC, id")
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +261,7 @@ func (s *store) Situations(ctx context.Context) ([]Situation, error) {
 }
 
 func (s *store) Situation(ctx context.Context, id int64) (Situation, error) {
-	return scanSituation(s.db.QueryRowContext(ctx, "SELECT "+situationCols+" FROM situations WHERE id = ?", id))
+	return scanSituation(s.db.QueryRowContext(ctx, "SELECT "+situationCols+" FROM situations WHERE id = ? AND deleted = 0", id))
 }
 
 // SeedSituations adds the default set once, on a fresh database.
@@ -284,9 +291,10 @@ func (s *store) UpdateSituation(ctx context.Context, x Situation) error {
 	return err
 }
 
-// DeleteSituation removes an added situation; the default set stays.
+// DeleteSituation hides an added situation; the default set stays, and the
+// findings it made stay too (criterion 14).
 func (s *store) DeleteSituation(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM situations WHERE id = ? AND builtin = 0", id)
+	_, err := s.db.ExecContext(ctx, "UPDATE situations SET deleted = 1, enabled = 0 WHERE id = ? AND builtin = 0", id)
 	return err
 }
 
@@ -415,9 +423,12 @@ func prefixed(p, cols string) string {
 	return strings.Join(parts, ", ")
 }
 
-// MarkFinding resolves a finding or calls it a false alarm.
+// MarkFinding resolves a finding, calls it a false alarm, or reopens it.
+// Reopening is refused when the same situation is already open in that chat.
 func (s *store) MarkFinding(ctx context.Context, id int64, status string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE findings SET status = ?, seen = 1 WHERE id = ?", status, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE findings SET status = ?, seen = 1 WHERE id = ?
+		AND NOT (? = 'open' AND EXISTS (SELECT 1 FROM findings o WHERE o.status = 'open' AND o.id != findings.id
+			AND o.chat = findings.chat AND o.situation_id = findings.situation_id))`, status, id, status)
 	return err
 }
 

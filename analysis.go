@@ -51,6 +51,8 @@ type analyzer struct {
 	mu      sync.Mutex
 	lastErr string
 	limited string // the day the limit was hit, "" if not
+	lastRun time.Time
+	hourly  bool // the hourly loop runs (not in practice mode)
 }
 
 // analysisState is what the overview says about the analysis.
@@ -58,6 +60,8 @@ type analysisState struct {
 	NoModel bool
 	Error   string
 	Limited bool
+	LastRun time.Time // zero before the first look
+	NextRun time.Time // zero when there is no hourly loop
 }
 
 func (z *analyzer) state(ctx context.Context) analysisState {
@@ -67,7 +71,11 @@ func (z *analyzer) state(ctx context.Context) analysisState {
 	}
 	z.mu.Lock()
 	defer z.mu.Unlock()
-	return analysisState{Error: z.lastErr, Limited: z.limited == z.today()}
+	st := analysisState{Error: z.lastErr, Limited: z.limited == z.today(), LastRun: z.lastRun}
+	if z.hourly && !z.lastRun.IsZero() {
+		st.NextRun = z.lastRun.Add(analysisEvery)
+	}
+	return st
 }
 
 func (z *analyzer) today() string { return time.Now().In(z.zone).Format("2006-01-02") }
@@ -91,9 +99,14 @@ func (z *analyzer) settings(ctx context.Context) modelSettings {
 	return m
 }
 
-func (z *analyzer) saveSettings(ctx context.Context, m modelSettings, newKey string) error {
+func (z *analyzer) saveSettings(ctx context.Context, m modelSettings, newKey string, forgetKey bool) error {
 	for k, v := range map[string]string{"model_type": m.Type, "model_address": m.Address, "model_model": m.Model, "model_limit": strconv.Itoa(m.Limit)} {
 		if err := z.st.SetSetting(ctx, k, v); err != nil {
+			return err
+		}
+	}
+	if forgetKey {
+		if err := os.Remove(filepath.Join(z.secretsDir, "model-key")); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -122,9 +135,11 @@ func (z *analyzer) analystFor(m modelSettings) (analyst, error) {
 	return llmAnalyst{model: cm, lang: z.lang}, nil
 }
 
-// test asks the model a short question (the Vyzkoušet button).
-func (z *analyzer) test(ctx context.Context) error {
-	m := z.settings(ctx)
+// test asks the given model a short question (the Vyzkoušet button).
+func (z *analyzer) test(ctx context.Context, m modelSettings) error {
+	if m.Type == modelPractice && z.practice == nil {
+		m.Type = ""
+	}
 	if !m.ready() {
 		return errors.New(z.lang.T("model_incomplete"))
 	}
@@ -149,6 +164,9 @@ func (z *analyzer) test(ctx context.Context) error {
 
 // loop runs the look once a minute after start, then every hour.
 func (z *analyzer) loop(ctx context.Context) {
+	z.mu.Lock()
+	z.hourly = true
+	z.mu.Unlock()
 	t := time.NewTimer(time.Minute)
 	defer t.Stop()
 	for {
@@ -195,7 +213,7 @@ func (z *analyzer) runOnce(ctx context.Context) {
 		if err := z.lookAt(ctx, a, m, chat, on); err != nil {
 			if errors.Is(err, errLimit) {
 				z.mu.Lock()
-				z.limited = z.today()
+				z.limited, z.lastRun = z.today(), time.Now()
 				z.mu.Unlock()
 				return
 			}
@@ -204,7 +222,7 @@ func (z *analyzer) runOnce(ctx context.Context) {
 		}
 	}
 	z.mu.Lock()
-	z.lastErr = ""
+	z.lastErr, z.lastRun = "", time.Now()
 	z.mu.Unlock()
 }
 
@@ -213,8 +231,20 @@ var errLimit = errors.New("daily limit reached")
 func (z *analyzer) fail(err error) {
 	log.Printf("analysis: %v", err)
 	z.mu.Lock()
-	z.lastErr = err.Error()
+	z.lastErr = z.lang.explain(err)
+	z.lastRun = time.Now()
 	z.mu.Unlock()
+}
+
+// noteTest lets a Vyzkoušet of the saved model update the overview.
+func (z *analyzer) noteTest(err error) {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	if err != nil {
+		z.lastErr = z.lang.explain(err)
+	} else {
+		z.lastErr = ""
+	}
 }
 
 func (z *analyzer) lookAt(ctx context.Context, a analyst, m modelSettings, chat string, on []Situation) error {
