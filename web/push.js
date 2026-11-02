@@ -18,6 +18,7 @@
   var KEY = "guardian-push-endpoint";
   function remembered() { try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; } }
   function remember(ep) { try { localStorage.setItem(KEY, ep); } catch (e) {} }
+  function forget() { try { localStorage.removeItem(KEY); } catch (e) {} }
   // Mark this device in the list and offer a test instead of a second "on".
   function markHere(ep) {
     if (!ep) return false;
@@ -37,7 +38,9 @@
     document.getElementById("push-home").hidden = false;
     button.disabled = true;
   }
-  if (!markHere(remembered()) && "serviceWorker" in navigator && navigator.serviceWorker.getRegistration) {
+  // A remembered endpoint counts only while it is still in the list.
+  if (remembered() && !markHere(remembered())) forget();
+  if (!remembered() && "serviceWorker" in navigator && navigator.serviceWorker.getRegistration) {
     navigator.serviceWorker.getRegistration().then(function (reg) {
       if (reg && reg.pushManager) return reg.pushManager.getSubscription();
     }).then(function (sub) { if (sub) markHere(sub.endpoint); }).catch(function () {});

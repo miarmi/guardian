@@ -79,6 +79,20 @@ func TestKidTokens(t *testing.T) {
 	if _, ok := n.checkKidToken(string(bad)); ok {
 		t.Fatal("altered token accepted")
 	}
+	// The last character of each part has spare bits; every other spelling
+	// of the same bytes must be refused.
+	for _, i := range []int{strings.Index(tok, ".") - 1, len(tok) - 1} {
+		for _, c := range "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" {
+			alt := []byte(tok)
+			if byte(c) == alt[i] {
+				continue
+			}
+			alt[i] = byte(c)
+			if _, ok := n.checkKidToken(string(alt)); ok {
+				t.Fatalf("altered spelling %q accepted", alt)
+			}
+		}
+	}
 	old, _ := n.kidToken(42, time.Now().Add(-time.Minute))
 	if _, ok := n.checkKidToken(old); ok {
 		t.Fatal("expired token accepted")

@@ -433,6 +433,11 @@ func (n *notifier) checkKidToken(token string) (int64, bool) {
 	if err1 != nil || err2 != nil || len(payload) != 16 || len(got) != 16 {
 		return 0, false
 	}
+	// Only the exact spelling we issued counts: the last character of each
+	// part carries spare bits, and a changed one must not decode the same.
+	if b64.EncodeToString(payload) != p || b64.EncodeToString(got) != sig {
+		return 0, false
+	}
 	key, err := n.kidKey()
 	if err != nil {
 		return 0, false
@@ -592,7 +597,8 @@ func (n *notifier) sendDigest(ctx context.Context, end time.Time) error {
 	}
 	chats, _ := n.st.CountChats(ctx)
 	m := n.mailSettings(ctx)
-	subject := n.lang.T("digest_subject", n.lang.day(start), n.lang.day(end.AddDate(0, 0, -1)))
+	// The label names every day the digest covers, including today.
+	subject := n.lang.T("digest_subject", n.lang.day(start), n.lang.day(end))
 	var firstErr error
 	for _, who := range []struct {
 		to   []string

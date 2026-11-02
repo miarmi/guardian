@@ -46,7 +46,7 @@ body {
 }
 main { max-width: 40rem; margin: 0 auto; padding: 1.25rem 1rem 2rem; }
 header h1 { margin: 0; font-size: 2rem; letter-spacing: -0.02em; }
-.title-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.title-row { display: flex; align-items: center; gap: 0.6rem; }
 .intro { margin: 0.5rem 0 1.25rem; color: var(--muted); font-size: 0.95rem; }
 .chip { font-size: 0.8rem; font-weight: 600; vertical-align: middle; padding: 0.15rem 0.6rem; border-radius: 999px; background: var(--off-bg); color: var(--off-text); letter-spacing: 0; }
 .back { margin: 0 0 0.25rem; }
@@ -157,7 +157,7 @@ details[open] > summary::after { transform: rotate(90deg); }
 .sit-meta { color: var(--muted); font-size: 0.9rem; }
 .situations details[open] summary { margin-bottom: 0.5rem; }
 .new-situation { margin-top: 1.5rem; }
-.finding-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.finding-head { display: flex; gap: 0.5rem; align-items: center; }
 .finding.serious { border-left: 4px solid var(--danger); }
 .finding.closed { opacity: 0.75; }
 .reason { margin: 0.5rem 0; }
@@ -169,15 +169,18 @@ blockquote .who { display: block; font-size: 0.85rem; font-weight: 600; color: v
 .form fieldset[disabled] { opacity: 0.7; }
 .settings-section { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .settings-section h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; }
-.devices li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-.devices form { margin: 0; }
+.devices li { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+.devices form { margin: 0; flex-shrink: 0; }
+.devices .device-name { flex: 1 1 0; min-width: 0; }
+.devices .this-device { display: block; font-size: 0.85rem; color: var(--muted); }
 .help-chip { background: var(--accent); color: var(--accent-text); }
 .child-message { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-radius: 0.4rem; background: var(--ok-bg); overflow-wrap: anywhere; }
 .contacts { margin-top: 2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); }
 .contacts h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 .contacts ul { margin: 0; padding-left: 1.1rem; list-style: disc; display: block; }
 .contacts li { background: none; border: 0; padding: 0.15rem 0; border-radius: 0; }
-.contacts a.tel, .contacts a.site { display: inline-block; min-height: 2.75rem; line-height: 2.75rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
-.contacts li { line-height: 1.5; }
+.contacts a.tel, .contacts a.site { display: inline-block; padding: 0.7rem 0; margin: -0.7rem 0; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.contacts li { line-height: 1.5; padding: 0.55rem 0; }
+[hidden] { display: none !important; }
 .helpline { margin: 1.5rem 0 0; }
 .helpline .button { width: 100%; }

@@ -74,7 +74,7 @@
     <h3>{{t "notif_devices"}}</h3>
     {{if .Mail.Devices}}
     <ul class="devices" aria-label="{{t "notif_devices"}}">
-      {{range .Mail.Devices}}<li data-endpoint="{{.Endpoint}}"><span>{{.Label}} · {{when .Created}} <span class="this-device" hidden>{{t "this_device"}}</span></span>
+      {{range .Mail.Devices}}<li data-endpoint="{{.Endpoint}}"><span class="device-name">{{.Label}} · {{when .Created}}<span class="this-device" hidden>{{t "this_device"}}</span></span>
         <form method="post" action="/push/devices/{{.ID}}/delete"><button type="submit" class="secondary">{{t "notif_off"}}</button></form></li>
       {{end}}
     </ul>

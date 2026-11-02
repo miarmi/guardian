@@ -33,7 +33,7 @@
   {{else}}
     <p class="status-line caution" role="status">{{t "kid_expired"}}</p>
   {{end}}
-  {{if .HelplineTel}}<p class="helpline"><a class="button" href="tel:{{.HelplineTel}}">{{.HelplineLabel}}</a></p>{{end}}
+  {{if .HelplineTel}}<p class="helpline"><a class="button secondary" href="tel:{{.HelplineTel}}">{{.HelplineLabel}}</a></p>{{end}}
   <section class="contacts" aria-label="{{index .Contacts 0}}">
     {{range $i, $c := .Contacts}}{{if eq $i 0}}<h2>{{$c}}</h2><ul>{{else}}<li>{{linkify $c}}</li>{{end}}{{end}}</ul>
   </section>
