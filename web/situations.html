@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{t "sit_title"}}{{t "title_sep"}}</title>
+<meta name="theme-color" content="#3b4a8a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="back"><a href="/">{{t "back"}}</a></p>
+    <h1>{{t "sit_title"}}</h1>
+    <p class="intro">{{t "sit_intro"}} {{t "sens_help"}}</p>
+  </header>
+  {{if .Error}}<p class="status-line warn" role="alert">{{.Error}}</p>{{end}}
+  <ul class="situations" aria-label="{{t "sit_title"}}">
+    {{range .Situations}}
+    <li class="situation{{if not .Enabled}} off{{end}}">
+      <details>
+        <summary>
+          <span class="sit-name">{{.Name}}</span>
+          <span class="sit-meta">{{if .Enabled}}{{t (printf "act_%s" .Action)}} · {{t "f_sens"}}: {{t (printf "sens_%s" .Sensitivity)}}{{else}}{{t "sit_off"}}{{end}}</span>
+        </summary>
+        <form method="post" action="/situations/{{.ID}}" class="form">
+          {{template "fields" .}}
+          <div class="choices">
+            <button type="submit">{{t "save"}}</button>
+            {{if .Builtin}}<span class="note">{{t "sit_builtin"}}</span>{{else}}<button type="submit" name="delete" value="1" class="secondary">{{t "sit_delete"}}</button>{{end}}
+          </div>
+        </form>
+      </details>
+    </li>
+    {{end}}
+  </ul>
+
+  <section aria-labelledby="new-heading" class="new-situation">
+    <h2 id="new-heading">{{t "sit_new"}}</h2>
+    <form method="post" action="/situations" class="form">
+      {{template "fields" (newSituation)}}
+      <div class="choices"><button type="submit">{{t "sit_add"}}</button></div>
+    </form>
+  </section>
+</main>
+<footer>{{t "version"}}: {{.Version}}</footer>
+</body>
+</html>
+{{define "fields"}}
+          <label for="name-{{.ID}}">{{t "f_name"}}</label>
+          <input id="name-{{.ID}}" name="name" type="text" maxlength="80" required value="{{.Name}}">
+          <label for="desc-{{.ID}}">{{t "f_desc"}}</label>
+          <textarea id="desc-{{.ID}}" name="description" rows="3" maxlength="1000" required>{{.Description}}</textarea>
+          <label for="sens-{{.ID}}">{{t "f_sens"}}</label>
+          <select id="sens-{{.ID}}" name="sensitivity">
+            {{$s := .Sensitivity}}{{range $v := list "low" "medium" "high"}}<option value="{{$v}}"{{if eq $s $v}} selected{{end}}>{{t (printf "sens_%s" $v)}}</option>{{end}}
+          </select>
+          <label for="act-{{.ID}}">{{t "f_action"}}</label>
+          <select id="act-{{.ID}}" name="action">
+            {{$a := .Action}}{{range $v := list "record" "digest" "alert"}}<option value="{{$v}}"{{if eq $a $v}} selected{{end}}>{{t (printf "act_%s" $v)}}</option>{{end}}
+          </select>
+          <label class="check"><input type="checkbox" name="enabled" value="1"{{if .Enabled}} checked{{end}}> {{t "f_enabled"}}</label>
+{{end}}

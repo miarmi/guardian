@@ -53,6 +53,9 @@ type App struct {
 	store    *store
 	wa       connector // nil when neither Connect nor Practice is set
 	dev      *practice // non-nil only in practice mode
+	an       *analyzer // nil when wa is nil (previews): nothing is analysed there
+	pages    map[string]*template.Template
+	stop     context.CancelFunc
 	preview  string
 	version  string
 	index    *template.Template
@@ -88,7 +91,11 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 			st.Close()
 			return nil, fmt.Errorf("guardian: whatsapp: %w", err)
 		}
-		return newApp(st, wa, cfg), nil
+		a := newApp(st, wa, cfg)
+		loopCtx, cancel := context.WithCancel(context.Background())
+		a.stop = cancel
+		go a.an.loop(loopCtx)
+		return a, nil
 	case cfg.Practice:
 		p := newPractice(st)
 		a := newApp(st, p, cfg)
@@ -100,6 +107,9 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 
 // Close stops the connector and closes the database.
 func (a *App) Close() error {
+	if a.stop != nil {
+		a.stop()
+	}
 	if a.wa != nil {
 		a.wa.Close()
 	}
@@ -133,8 +143,12 @@ func newApp(st *store, wa connector, cfg Config) *App {
 		"when":  func(t time.Time) string { return l.when(t.In(zone), time.Now().In(zone)) },
 		"count": l.count,
 		"t":     l.T,
+		"list":  func(v ...string) []string { return v },
+		"newSituation": func() Situation {
+			return Situation{Sensitivity: "medium", Action: "digest", Enabled: true}
+		},
 	}
-	return &App{
+	a := &App{
 		store:    st,
 		wa:       wa,
 		preview:  preview,
@@ -144,10 +158,25 @@ func newApp(st *store, wa connector, cfg Config) *App {
 		notfound: template.Must(template.New("notfound.html").Funcs(funcs).ParseFS(webFS, "web/notfound.html")),
 		disc:     template.Must(template.New("disconnect.html").Funcs(funcs).ParseFS(webFS, "web/disconnect.html")),
 		lang:     l,
-		static:   http.StripPrefix("/static/", http.FileServer(http.FS(sub))),
-		icons:    makeIcons(),
-		zone:     zone,
+		pages: map[string]*template.Template{
+			"settings":   template.Must(template.New("settings.html").Funcs(funcs).ParseFS(webFS, "web/settings.html")),
+			"situations": template.Must(template.New("situations.html").Funcs(funcs).ParseFS(webFS, "web/situations.html")),
+			"findings":   template.Must(template.New("findings.html").Funcs(funcs).ParseFS(webFS, "web/findings.html")),
+		},
+		static: http.StripPrefix("/static/", http.FileServer(http.FS(sub))),
+		icons:  makeIcons(),
+		zone:   zone,
 	}
+	if wa != nil {
+		a.an = &analyzer{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir}
+		if cfg.Practice {
+			a.an.practice = &practiceModel{reason: l.T("practice_reason"), errText: l.T("practice_unreachable")}
+		}
+		if err := st.SeedSituations(context.Background(), l.situations); err != nil {
+			log.Printf("situations: %v", err)
+		}
+	}
+	return a
 }
 
 // Handler serves the pages. Mount it at the root of a host.
@@ -168,8 +197,21 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /static/style.css", a.static)
 	mux.Handle("GET /static/connect.js", a.static)
 	mux.HandleFunc("GET /whatsapp/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusSeeOther) })
+	mux.HandleFunc("GET /settings", a.settingsPage)
+	mux.HandleFunc("POST /settings", a.saveSettings)
+	mux.HandleFunc("POST /settings/test", a.testModel)
+	mux.HandleFunc("GET /situations", a.situationsPage)
+	mux.HandleFunc("POST /situations", a.addSituation)
+	mux.HandleFunc("POST /situations/{id}", a.updateSituation)
+	mux.HandleFunc("GET /findings", a.findingsPage)
+	mux.HandleFunc("POST /findings/{id}/{status}", a.markFinding)
+	mux.Handle("GET /static/settings.js", a.static)
 	if a.dev != nil {
 		a.dev.routes(mux)
+		if a.an != nil && a.an.practice != nil {
+			mux.HandleFunc("POST /dev/analysis/run", a.devRunAnalysis)
+			mux.HandleFunc("POST /dev/model/unreachable", a.devModelUnreachable)
+		}
 	}
 	mux.HandleFunc("/", a.notFound)
 	return logRequests(securityHeaders(http.NewCrossOriginProtection().Handler(mux)))
@@ -215,6 +257,7 @@ type indexData struct {
 	Connector connectorView
 	Chats     []ChatSummary
 	Lang      string
+	Analysis  overviewAnalysis
 }
 
 func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +268,7 @@ func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
 	}
 	a.render(w, a.index, http.StatusOK, indexData{
 		Preview: a.preview, Version: a.version, Connector: a.connector(), Chats: chats, Lang: a.lang.code,
+		Analysis: a.overviewAnalysis(r.Context()),
 	})
 }
 

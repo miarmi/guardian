@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{t "fin_title"}}{{t "title_sep"}}</title>
+<meta name="theme-color" content="#3b4a8a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="back"><a href="/">{{t "back"}}</a></p>
+    <h1>{{t "fin_title"}}</h1>
+    <p class="intro">{{t "fin_intro"}}</p>
+  </header>
+  {{if .Findings}}
+  <ul class="findings" aria-label="{{t "fin_title"}}">
+    {{range .Findings}}
+    <li class="finding{{if ne .Status "open"}} closed{{end}}{{if eq .Situation.Action "alert"}} serious{{end}}">
+      <div class="finding-head">
+        <span class="sit-name">{{.Situation.Name}}</span>
+        {{if eq .Status "resolved"}}<span class="chip">{{t "fin_marked_resolved"}}</span>{{else if eq .Status "false_alarm"}}<span class="chip">{{t "fin_marked_false"}}</span>{{end}}
+      </div>
+      <p class="chat-meta">{{t "fin_in_chat" (or .ChatName .Chat)}} · {{when .Updated}}</p>
+      <p class="reason">{{.Reason}}</p>
+      {{range .Quotes}}<blockquote><span class="who">{{if .FromMe}}{{t "child"}}{{else}}{{.SenderName}}{{end}}</span> {{.Text}}</blockquote>{{end}}
+      {{if eq .Status "open"}}
+      <div class="choices">
+        <form method="post" action="/findings/{{.ID}}/resolved"><button type="submit">{{t "fin_resolved"}}</button></form>
+        <form method="post" action="/findings/{{.ID}}/false_alarm"><button type="submit" class="secondary">{{t "fin_false"}}</button></form>
+      </div>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="empty">{{t "fin_none"}}</p>
+  {{end}}
+</main>
+<footer>{{t "version"}}: {{.Version}}</footer>
+</body>
+</html>

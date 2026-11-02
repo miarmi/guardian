@@ -114,3 +114,35 @@ button.danger { background: var(--danger); color: #fff; }
 .countdown { margin: 0; color: #5f6577; font-size: 0.9rem; }
 .hint { color: var(--muted); font-size: 0.95rem; margin-top: 1rem; }
 footer { max-width: 40rem; margin: 0 auto; padding: 0 1rem 1.5rem; color: var(--muted); font-size: 0.85rem; }
+.nav { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.25rem 0 0.5rem; }
+.nav a { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.75rem; padding: 0 0.9rem; border: 1px solid var(--border); border-radius: 0.6rem; color: var(--text); text-decoration: none; font-weight: 600; background: var(--card); }
+.count { display: inline-block; min-width: 1.4rem; padding: 0 0.4rem; border-radius: 999px; background: var(--danger); color: #fff; font-size: 0.8rem; text-align: center; }
+.banner { display: block; margin: 0 0 1rem; padding: 0.8rem 1rem; border-radius: 0.75rem; background: var(--danger); color: #fff; font-weight: 600; text-decoration: none; }
+.status-line { margin: 0.25rem 0 0.4rem; font-weight: 600; }
+.status-line.warn { color: var(--danger); }
+.status-line a { color: var(--accent); }
+.form { display: grid; gap: 0.35rem; }
+.form label { font-weight: 600; margin-top: 0.6rem; }
+.form label.check { display: flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; margin-top: 0.4rem; }
+.form label.check input { width: 1.4rem; height: 1.4rem; }
+.form input[type=text], .form input[type=url], .form input[type=password], .form input[type=number], .form select, .form textarea {
+  font: inherit; width: 100%; min-width: 0; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 0.6rem; background: var(--card); color: var(--text);
+}
+.form textarea { resize: vertical; }
+.form .fields { display: grid; gap: 0.35rem; }
+.form .fields[hidden] { display: none; }
+.situations li, .findings li { display: block; }
+.situations summary { cursor: pointer; display: grid; gap: 0.15rem; min-height: 2.75rem; list-style: none; }
+.situations summary::-webkit-details-marker { display: none; }
+.situation.off .sit-name { color: var(--muted); }
+.sit-name { font-weight: 600; }
+.sit-meta { color: var(--muted); font-size: 0.9rem; }
+.situations details[open] summary { margin-bottom: 0.5rem; }
+.new-situation { margin-top: 1.5rem; }
+.finding-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.finding.serious { border-left: 4px solid var(--danger); }
+.finding.closed { opacity: 0.75; }
+.reason { margin: 0.5rem 0; }
+blockquote { margin: 0.4rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--border); background: var(--bg); border-radius: 0.4rem; overflow-wrap: anywhere; }
+blockquote .who { display: block; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
+.findings .choices form { margin: 0; }

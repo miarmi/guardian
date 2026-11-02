@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{t "set_title"}}{{t "title_sep"}}</title>
+<meta name="theme-color" content="#3b4a8a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="back"><a href="/">{{t "back"}}</a></p>
+    <h1>{{t "set_title"}}</h1>
+    <p class="intro">{{t "set_intro"}}</p>
+  </header>
+  {{if not .Available}}
+  <p class="note">{{t "an_preview"}}</p>
+  {{else}}
+  {{if .Saved}}<p class="status-line" role="status">{{t "saved"}}</p>{{end}}
+  {{if .Result}}<p class="status-line{{if not .ResultOK}} warn{{end}}" role="status">{{.Result}}</p>{{end}}
+  <form method="post" action="/settings" class="form" id="settings-form"
+        data-anthropic-address="https://api.anthropic.com" data-anthropic-model="claude-sonnet-5-5">
+    <label for="type">{{t "f_type"}}</label>
+    <select id="type" name="type">
+      <option value="anthropic"{{if eq .S.Type "anthropic"}} selected{{end}}>{{t "t_anthropic"}}</option>
+      <option value="openai"{{if eq .S.Type "openai"}} selected{{end}}>{{t "t_openai"}}</option>
+      {{if .Practice}}<option value="practice"{{if eq .S.Type "practice"}} selected{{end}}>{{t "t_practice"}}</option>{{end}}
+    </select>
+    <p class="note" id="openai-hint"{{if ne .S.Type "openai"}} hidden{{end}}>{{t "t_openai_hint"}}</p>
+
+    <div class="fields" id="remote-fields"{{if eq .S.Type "practice"}} hidden{{end}}>
+      <label for="address">{{t "f_address"}}</label>
+      <input id="address" name="address" type="url" inputmode="url" autocomplete="off" spellcheck="false" value="{{.S.Address}}">
+      <label for="model">{{t "f_model"}}</label>
+      <input id="model" name="model" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" value="{{.S.Model}}">
+      <label for="key">{{t "f_key"}}</label>
+      <input id="key" name="key" type="password" autocomplete="off" value=""{{if .KeyHint}} placeholder="{{.KeyHint}}"{{end}}>
+      <p class="note">{{if .KeyHint}}{{t "key_saved" .KeyHint}}{{else}}{{t "key_none"}}{{end}}</p>
+    </div>
+
+    <label for="limit">{{t "f_limit"}}</label>
+    <input id="limit" name="limit" type="number" inputmode="numeric" min="0" max="100000" value="{{.S.Limit}}">
+
+    <p class="note">{{if .Destination}}{{t "goes_to" .Destination}}{{else}}{{t "stays_home"}}{{end}}</p>
+    <div class="choices">
+      <button type="submit">{{t "save"}}</button>
+      <button type="submit" class="secondary" formaction="/settings/test">{{t "test"}}</button>
+    </div>
+  </form>
+  {{end}}
+</main>
+<footer>{{t "version"}}: {{.Version}}</footer>
+<script src="/static/settings.js"></script>
+</body>
+</html>

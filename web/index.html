@@ -14,12 +14,18 @@
 </head>
 <body>
 <main>
+  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}}</a>{{end}}
   <header>
     <div class="title-row">
       <h1>Guardian</h1>
       {{if .Preview}}<span class="chip">{{t "preview"}}: {{.Preview}}</span>{{end}}
     </div>
     <p class="intro">{{t "intro"}}</p>
+    <nav class="nav">
+      <a href="/findings">{{t "nav_findings"}}{{if .Analysis.OpenCount}} <span class="count">{{.Analysis.OpenCount}}</span>{{end}}</a>
+      <a href="/situations">{{t "nav_situations"}}</a>
+      <a href="/settings">{{t "nav_settings"}}</a>
+    </nav>
   </header>
 
   <section aria-labelledby="connectors-heading">
@@ -42,6 +48,19 @@
         {{end}}
       </li>
     </ul>
+  </section>
+
+  <section aria-labelledby="analysis-heading">
+    <h2 id="analysis-heading">{{t "analysis"}}</h2>
+    {{with .Analysis}}
+    {{if .State.NoModel}}<p class="status-line warn">{{t "no_model"}} <a href="/settings">{{t "nav_settings"}}</a></p>
+    {{else}}
+      {{if .State.Error}}<p class="status-line warn">{{t "an_failed" .State.Error}}</p>
+      {{else if .State.Limited}}<p class="status-line warn">{{t "an_limit"}}</p>
+      {{else}}<p class="status-line">{{t "an_running"}}</p>{{end}}
+      <p class="note">{{if .Destination}}{{t "goes_to" .Destination}}{{else}}{{t "stays_home"}}{{end}}</p>
+    {{end}}
+    {{end}}
   </section>
 
   <section aria-labelledby="chats-heading">
