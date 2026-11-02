@@ -56,6 +56,8 @@ the child's phone under *Linked devices*.
   of them out.
 - `GUARDIAN_CONNECT=1` allows the connector to run. Leave it unset for a test
   copy.
+- `GUARDIAN_LANG=cs` for Czech pages; English is the default. Adding a
+  language is one table in `i18n.go`.
 - The pages have **no login of their own**. Run Guardian behind a reverse
   proxy with authentication, on a private network, or both. It is a child's
   message archive; treat it accordingly.
@@ -63,7 +65,7 @@ the child's phone under *Linked devices*.
 ## Use it as a library
 
 ```go
-app, err := guardian.New(ctx, guardian.Config{DataDir: "data", Connect: true})
+app, err := guardian.New(ctx, guardian.Config{DataDir: "data", Connect: true, Language: "cs"})
 http.ListenAndServe("127.0.0.1:8080", app.Handler())
 ```
 

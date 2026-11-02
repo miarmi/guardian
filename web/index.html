@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -15,13 +15,13 @@
 <body>
 <main>
   <header>
-    <h1>Guardian{{if .Preview}} <span class="chip">Preview: {{.Preview}}</span>{{end}}</h1>
-    <p class="intro">Keeps a copy of the chats on our own server. On the phone it appears as a linked device named Guardian, which can be removed there at any time.</p>
+    <h1>Guardian{{if .Preview}} <span class="chip">{{t "preview"}}: {{.Preview}}</span>{{end}}</h1>
+    <p class="intro">{{t "intro"}}</p>
   </header>
 
   <section aria-labelledby="connectors-heading">
-    <h2 id="connectors-heading">Connectors</h2>
-    <ul class="connectors" aria-label="Connectors">
+    <h2 id="connectors-heading">{{t "connectors"}}</h2>
+    <ul class="connectors" aria-label="{{t "connectors"}}">
       <li class="connector">
         <div class="name">WhatsApp</div>
         <div class="state{{if .Connector.Connected}} on{{end}}">{{.Connector.StateText}}</div>
@@ -29,12 +29,10 @@
         {{if .Connector.Available}}
         <div class="actions">
           {{if .Connector.Connected}}
-          <form method="post" action="/whatsapp/disconnect">
-            <button type="submit" class="secondary">Disconnect</button>
-          </form>
+          <a class="button secondary" href="/whatsapp/disconnect">{{t "disconnect"}}</a>
           {{else}}
           <form method="post" action="/whatsapp/connect">
-            <button type="submit">Connect WhatsApp</button>
+            <button type="submit">{{t "connect"}}</button>
           </form>
           {{end}}
         </div>
@@ -44,21 +42,21 @@
   </section>
 
   <section aria-labelledby="chats-heading">
-    <h2 id="chats-heading">Chats</h2>
+    <h2 id="chats-heading">{{t "chats"}}</h2>
     {{if .Chats}}
-    <p class="note">Only counts are shown in this phase; messages are not readable here.</p>
-    <ul class="chats" aria-label="Chats">
+    <p class="note">{{t "chats_note"}}</p>
+    <ul class="chats" aria-label="{{t "chats"}}">
       {{range .Chats}}<li>
         <span class="chat-name">{{if .Name}}{{.Name}}{{else}}{{.JID}}{{end}}</span>
-        <span class="chat-meta">{{if .IsGroup}}group · {{end}}{{count .Count}} · {{when .Last}}</span>
+        <span class="chat-meta">{{if .IsGroup}}{{t "group"}} · {{end}}{{count .Count}} · {{when .Last}}</span>
       </li>
       {{end}}
     </ul>
     {{else}}
-    <p class="empty">{{.NoChats}}</p>
+    <p class="empty">{{t "no_chats"}}</p>
     {{end}}
   </section>
 </main>
-<footer>Version: {{.Version}}</footer>
+<footer>{{t "version"}}: {{.Version}}</footer>
 </body>
 </html>

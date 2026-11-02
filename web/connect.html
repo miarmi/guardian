@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Connect WhatsApp – Guardian</title>
+<title>{{t "connect"}}{{t "title_sep"}}</title>
 <meta name="theme-color" content="#3b4a8a">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -13,26 +13,27 @@
 <body>
 <main>
   <header>
-    <p class="back"><a href="/">‹ Guardian</a></p>
-    <h1>Connect WhatsApp</h1>
+    <p class="back"><a href="/">{{t "back"}}</a></p>
+    <h1>{{t "connect"}}</h1>
   </header>
 
-  <p class="instruction{{if .Error}} dim{{end}}" id="instruction">Open WhatsApp on the phone, go to Linked devices, and scan this code.</p>
+  <p class="instruction{{if .Error}} dim{{end}}" id="instruction">{{t "instruction"}}</p>
 
-  <div class="qr{{if .HasQR}} has-code{{end}}" id="qr" data-state="{{.State}}"{{if .Error}} data-error="1"{{end}}>
-    <img id="qr-image" src="/whatsapp/qr.png" alt="QR code to scan in WhatsApp" width="288" height="288"{{if not .HasQR}} hidden{{end}}>
+  <div class="qr{{if .HasQR}} has-code{{end}}" id="qr" data-state="{{.State}}"{{if .Error}} data-error="1"{{end}}
+       data-expired="{{t "expired"}}" data-no-code="{{t "no_code"}}" data-getting="{{t "getting"}}" data-connected="{{t "connected_go"}}">
+    <img id="qr-image" src="/whatsapp/qr.png" alt="{{t "qr_alt"}}" width="288" height="288"{{if not .HasQR}} hidden{{end}}>
     <div id="qr-status" class="qr-status" role="status" aria-live="polite">
-      <p id="qr-message">{{if .Error}}{{.Error}}{{else if .HasQR}}{{else}}Getting a code…{{end}}</p>
+      <p id="qr-message">{{if .Error}}{{.Error}}{{else if .HasQR}}{{else}}{{t "getting"}}{{end}}</p>
       <form method="post" action="/whatsapp/connect" id="retry"{{if not .Error}} hidden{{end}}>
-        <button type="submit">Try again</button>
+        <button type="submit">{{t "try_again"}}</button>
       </form>
     </div>
     <p id="countdown" class="countdown" hidden></p>
   </div>
 
-  <p class="hint">The phone will show a linked device named <strong>Guardian</strong>. It can be removed there at any time.</p>
+  <p class="hint">{{t "hint_1"}}<strong>Guardian</strong>{{t "hint_2"}}</p>
 </main>
-<footer>Version: {{.Version}}</footer>
+<footer>{{t "version"}}: {{.Version}}</footer>
 <script src="/static/connect.js"></script>
 </body>
 </html>

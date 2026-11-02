@@ -24,9 +24,11 @@
 
   var instruction = document.getElementById("instruction");
 
+  var words = box.dataset;
+
   retry.addEventListener("submit", function () {
     retry.querySelector("button").disabled = true;
-    message.textContent = "Getting a code…";
+    message.textContent = words.getting;
   });
 
   function showMessage(text, canRetry) {
@@ -39,9 +41,11 @@
     if (ticker) { clearInterval(ticker); ticker = null; }
   }
 
+  var countdownText = "";
+
   function tick() {
     if (secondsLeft > 0) { secondsLeft -= 1; }
-    countdown.textContent = "New code in " + secondsLeft + " s";
+    countdown.textContent = countdownText.replace(/\d+/, secondsLeft);
     countdown.hidden = secondsLeft <= 0;
   }
 
@@ -50,17 +54,18 @@
       .then(function (r) { return r.json(); })
       .then(function (s) {
         if (s.state === "connected") {
-          showMessage("Connected. Taking you back…", false);
+          showMessage(words.connected, false);
           window.location.replace("/");
           return;
         }
         if (s.state !== "pairing") {
-          showMessage(everShown ? "The code expired." : "Could not get a code.", true);
+          showMessage(everShown ? words.expired : words.noCode, true);
           return;
         }
         if (s.qr && s.qr !== shown) { showCode(s.qr); }
         if (s.qr) {
           secondsLeft = s.seconds || 0;
+          countdownText = s.countdown || "";
           if (!ticker) { ticker = setInterval(tick, 1000); }
           tick();
         }

@@ -102,7 +102,7 @@ func TestPreviewShowsNoConnectButton(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
-	for _, want := range []string{"<title>Guardian</title>", "Connectors", "WhatsApp", textNoPreviews, "Chats", msgNoChats, "Preview: some-preview"} {
+	for _, want := range []string{"<title>Guardian</title>", "Connectors", "WhatsApp", "Not available in previews", "Chats", "No messages yet.", "Preview: some-preview"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -117,28 +117,65 @@ func TestPreviewShowsNoConnectButton(t *testing.T) {
 	}
 }
 
-func TestHumanTime(t *testing.T) {
+func TestWordsInBothLanguages(t *testing.T) {
 	zone := time.UTC
 	now := time.Date(2026, 11, 2, 10, 0, 0, 0, zone)
-	cases := map[string]time.Time{
-		"today 09:05":     time.Date(2026, 11, 2, 9, 5, 0, 0, zone),
-		"yesterday 23:59": time.Date(2026, 11, 1, 23, 59, 0, 0, zone),
-		"Fri 30 Oct":      time.Date(2026, 10, 30, 9, 0, 0, 0, zone),
-		"3 Jan":           time.Date(2026, 1, 3, 9, 0, 0, 0, zone),
-		"27 Oct 2025":     time.Date(2025, 10, 27, 9, 0, 0, 0, zone),
+	at := func(y int, m time.Month, d, h, min int) time.Time { return time.Date(y, m, d, h, min, 0, 0, zone) }
+	cases := []struct {
+		lang, want string
+		at         time.Time
+	}{
+		{"en", "today 09:05", at(2026, 11, 2, 9, 5)},
+		{"en", "yesterday 23:59", at(2026, 11, 1, 23, 59)},
+		{"en", "Fri 30 Oct", at(2026, 10, 30, 9, 0)},
+		{"en", "3 Jan", at(2026, 1, 3, 9, 0)},
+		{"en", "27 Oct 2025", at(2025, 10, 27, 9, 0)},
+		{"cs", "dnes 9:05", at(2026, 11, 2, 9, 5)},
+		{"cs", "včera 23:59", at(2026, 11, 1, 23, 59)},
+		{"cs", "pá 30. 10.", at(2026, 10, 30, 9, 0)},
+		{"cs", "3. 1.", at(2026, 1, 3, 9, 0)},
+		{"cs", "27. 10. 2025", at(2025, 10, 27, 9, 0)},
 	}
-	for want, at := range cases {
-		if got := humanTime(at, zone, now); got != want {
-			t.Errorf("humanTime(%v) = %q, want %q", at, got, want)
+	for _, c := range cases {
+		if got := pick(c.lang).when(c.at, now); got != c.want {
+			t.Errorf("%s when(%v) = %q, want %q", c.lang, c.at, got, c.want)
 		}
 	}
-	if got := formatCount(1); got != "1 message" {
-		t.Errorf("formatCount(1) = %q", got)
+	counts := []struct {
+		lang string
+		n    int
+		want string
+	}{
+		{"en", 1, "1 message"}, {"en", 12345, "12\u202f345 messages"},
+		{"cs", 1, "1 zpráva"}, {"cs", 3, "3 zprávy"}, {"cs", 5, "5 zpráv"}, {"cs", 1234, "1\u00a0234 zpráv"},
 	}
-	if got := formatCount(12345); got != "12 345 messages" {
-		t.Errorf("formatCount(12345) = %q", got)
+	for _, c := range counts {
+		if got := pick(c.lang).count(c.n); got != c.want {
+			t.Errorf("%s count(%d) = %q, want %q", c.lang, c.n, got, c.want)
+		}
 	}
 	if got := formatNumber("420777123456"); got != "+420 777 123 456" {
 		t.Errorf("formatNumber = %q", got)
+	}
+	if pick("xx") != pick("en") {
+		t.Error("unknown language should fall back to English")
+	}
+}
+
+func TestCzechPage(t *testing.T) {
+	st := testStore(t)
+	a := newApp(st, nil, Config{Env: "p", Language: "cs"})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rec.Body.String()
+	for _, want := range []string{`<html lang="cs">`, "Konektory", "V náhledu není k dispozici", "Chaty", "Zatím žádné zprávy.", "Náhled: p"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	rec = httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope", nil))
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "Taková stránka tu není.") {
+		t.Errorf("404 page: %d", rec.Code)
 	}
 }

@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -22,12 +21,6 @@ import (
 
 //go:embed web
 var webFS embed.FS
-
-const (
-	msgNoChats     = "No messages yet."
-	textNoPreviews = "Not available in previews"
-	msgUnreachable = "Could not reach WhatsApp. Check the server's internet connection and try again."
-)
 
 // Config says where Guardian keeps its data and whether it may connect.
 type Config struct {
@@ -46,6 +39,8 @@ type Config struct {
 	Version string
 	// TimeZone for the times on the pages, e.g. "Europe/Prague". Defaults to UTC.
 	TimeZone string
+	// Language of the pages: "en" (default) or "cs".
+	Language string
 }
 
 // App is one running Guardian: a store, optionally a WhatsApp connector, and
@@ -58,7 +53,9 @@ type App struct {
 	index    *template.Template
 	connect  *template.Template
 	notfound *template.Template
+	disc     *template.Template
 	static   http.Handler
+	lang     *lang
 	icons    map[string][]byte
 	zone     *time.Location
 }
@@ -116,9 +113,11 @@ func newApp(st *store, wa *whatsapp, cfg Config) *App {
 			zone = z
 		}
 	}
+	l := pick(cfg.Language)
 	funcs := template.FuncMap{
-		"when":  func(t time.Time) string { return humanTime(t, zone, time.Now()) },
-		"count": formatCount,
+		"when":  func(t time.Time) string { return l.when(t.In(zone), time.Now().In(zone)) },
+		"count": l.count,
+		"t":     l.T,
 	}
 	return &App{
 		store:    st,
@@ -128,6 +127,8 @@ func newApp(st *store, wa *whatsapp, cfg Config) *App {
 		index:    template.Must(template.New("index.html").Funcs(funcs).ParseFS(webFS, "web/index.html")),
 		connect:  template.Must(template.New("connect.html").Funcs(funcs).ParseFS(webFS, "web/connect.html")),
 		notfound: template.Must(template.New("notfound.html").Funcs(funcs).ParseFS(webFS, "web/notfound.html")),
+		disc:     template.Must(template.New("disconnect.html").Funcs(funcs).ParseFS(webFS, "web/disconnect.html")),
+		lang:     l,
 		static:   http.StripPrefix("/static/", http.FileServer(http.FS(sub))),
 		icons:    makeIcons(),
 		zone:     zone,
@@ -142,6 +143,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /whatsapp/connect", a.connectPage)
 	mux.HandleFunc("GET /whatsapp/qr.png", a.qrImage)
 	mux.HandleFunc("GET /whatsapp/status.json", a.statusJSON)
+	mux.HandleFunc("GET /whatsapp/disconnect", a.disconnectPage)
 	mux.HandleFunc("POST /whatsapp/disconnect", a.disconnect)
 	mux.HandleFunc("GET /healthz", a.healthz)
 	mux.HandleFunc("GET /manifest.webmanifest", a.manifest)
@@ -166,18 +168,18 @@ type connectorView struct {
 
 func (a *App) connector() connectorView {
 	if a.wa == nil {
-		return connectorView{StateText: textNoPreviews}
+		return connectorView{StateText: a.lang.T("not_previews")}
 	}
 	s := a.wa.Status()
 	switch s.State {
 	case waConnected:
-		return connectorView{Available: true, StateText: "Connected as " + formatNumber(s.Number), Connected: true}
+		return connectorView{Available: true, StateText: a.lang.T("st_as", formatNumber(s.Number)), Connected: true}
 	case waPairing:
-		return connectorView{Available: true, StateText: "Not connected", CanConnect: true}
+		return connectorView{Available: true, StateText: a.lang.T("st_not"), CanConnect: true}
 	case waPhoneRemoved:
-		return connectorView{Available: true, StateText: "Disconnected by the phone", Note: "The device was removed on the phone. Connect again to continue.", CanConnect: true}
+		return connectorView{Available: true, StateText: a.lang.T("st_removed"), Note: a.lang.T("removed_next"), CanConnect: true}
 	default:
-		return connectorView{Available: true, StateText: "Not connected", CanConnect: true}
+		return connectorView{Available: true, StateText: a.lang.T("st_not"), CanConnect: true}
 	}
 }
 
@@ -186,8 +188,7 @@ type indexData struct {
 	Version   string
 	Connector connectorView
 	Chats     []ChatSummary
-	NoChats   string
-	Error     string
+	Lang      string
 }
 
 func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
@@ -197,13 +198,13 @@ func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.render(w, a.index, http.StatusOK, indexData{
-		Preview: a.preview, Version: a.version, Connector: a.connector(), Chats: chats, NoChats: msgNoChats,
+		Preview: a.preview, Version: a.version, Connector: a.connector(), Chats: chats, Lang: a.lang.code,
 	})
 }
 
 func (a *App) startConnect(w http.ResponseWriter, r *http.Request) {
 	if a.wa == nil {
-		http.Error(w, textNoPreviews, http.StatusConflict)
+		http.Error(w, a.lang.T("not_previews"), http.StatusConflict)
 		return
 	}
 	if err := a.wa.StartPairing(r.Context()); err != nil {
@@ -219,6 +220,7 @@ type connectData struct {
 	State   waState
 	HasQR   bool
 	Error   string
+	Lang    string
 }
 
 func (a *App) connectPage(w http.ResponseWriter, r *http.Request) {
@@ -233,9 +235,9 @@ func (a *App) connectPage(w http.ResponseWriter, r *http.Request) {
 	}
 	errText := ""
 	if r.URL.Query().Get("error") == "unreachable" {
-		errText = msgUnreachable
+		errText = a.lang.T("unreachable")
 	}
-	a.render(w, a.connect, http.StatusOK, connectData{Version: a.version, State: s.State, HasQR: s.QR != "", Error: errText})
+	a.render(w, a.connect, http.StatusOK, connectData{Version: a.version, State: s.State, HasQR: s.QR != "", Error: errText, Lang: a.lang.code})
 }
 
 // qrImage draws the current QR code; 204 while there is none yet.
@@ -273,7 +275,18 @@ func (a *App) statusJSON(w http.ResponseWriter, r *http.Request) {
 	if !s.QRExpires.IsZero() {
 		left = max(0, int(time.Until(s.QRExpires).Seconds()))
 	}
-	json.NewEncoder(w).Encode(map[string]any{"state": string(s.State), "qr": shortHash(s.QR), "seconds": left})
+	json.NewEncoder(w).Encode(map[string]any{"state": string(s.State), "qr": shortHash(s.QR), "seconds": left,
+		"countdown": a.lang.T("new_code_in", left)})
+}
+
+// disconnectPage asks before logging the device out: one tap should not undo
+// a pairing that needs the phone in hand to redo.
+func (a *App) disconnectPage(w http.ResponseWriter, r *http.Request) {
+	if a.wa == nil || a.wa.Status().State != waConnected {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	a.render(w, a.disc, http.StatusOK, map[string]string{"Version": a.version, "Lang": a.lang.code})
 }
 
 func (a *App) disconnect(w http.ResponseWriter, r *http.Request) {
@@ -299,7 +312,7 @@ func (a *App) render(w http.ResponseWriter, t *template.Template, status int, da
 }
 
 func (a *App) notFound(w http.ResponseWriter, r *http.Request) {
-	a.render(w, a.notfound, http.StatusNotFound, map[string]string{"Version": a.version})
+	a.render(w, a.notfound, http.StatusNotFound, map[string]string{"Version": a.version, "Lang": a.lang.code})
 }
 
 func (a *App) healthz(w http.ResponseWriter, r *http.Request) {
@@ -390,36 +403,6 @@ func hex8(v uint32) string {
 		v >>= 4
 	}
 	return string(b[:])
-}
-
-// humanTime says when something happened the way a person would:
-// "today 09:05", "yesterday 07:45", "Fri 31 Oct", "27 Oct 2025".
-func humanTime(t time.Time, zone *time.Location, now time.Time) string {
-	t, now = t.In(zone), now.In(zone)
-	day := func(x time.Time) time.Time { return time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, zone) }
-	switch d := day(now).Sub(day(t)); {
-	case d == 0:
-		return "today " + t.Format("15:04")
-	case d == 24*time.Hour:
-		return "yesterday " + t.Format("15:04")
-	case d > 0 && d < 7*24*time.Hour:
-		return t.Format("Mon 2 Jan")
-	case t.Year() == now.Year():
-		return t.Format("2 Jan")
-	}
-	return t.Format("2 Jan 2006")
-}
-
-// formatCount writes "1 message", "58 messages", "12 345 messages".
-func formatCount(n int) string {
-	s := strconv.Itoa(n)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "\u202f" + s[i:]
-	}
-	if n == 1 {
-		return s + " message"
-	}
-	return s + " messages"
 }
 
 // formatNumber groups a phone number the way people write it. Czech and

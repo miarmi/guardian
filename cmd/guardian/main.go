@@ -1,6 +1,6 @@
 // Command guardian runs Guardian on its own: one process, one SQLite file.
 //
-//	PORT=8080 DATA_DIR=./data GUARDIAN_CONNECT=1 guardian
+//	PORT=8080 DATA_DIR=./data GUARDIAN_CONNECT=1 GUARDIAN_LANG=cs guardian
 //
 // Put it behind a reverse proxy with a login: the pages have no login of
 // their own.
@@ -33,6 +33,7 @@ func main() {
 		Env:      os.Getenv("APP_ENV"),
 		Version:  os.Getenv("APP_VERSION"),
 		TimeZone: envOr("TZ", "UTC"),
+		Language: envOr("GUARDIAN_LANG", "en"),
 	})
 	if err != nil {
 		log.Fatal(err)

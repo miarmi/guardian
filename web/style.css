@@ -11,6 +11,7 @@
   --off-bg: #ebebe7;
   --off-text: #4a5062;
   --qr-bg: #ffffff;
+  --danger: #a33b2b;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -27,6 +28,7 @@
     --off-bg: #2a2d36;
     --off-text: #b5bac8;
     --qr-bg: #1d2028;
+    --danger: #d9705f;
   }
 }
 * { box-sizing: border-box; }
@@ -78,7 +80,11 @@ button {
   color: var(--accent-text);
   cursor: pointer;
 }
-button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+button.secondary, .button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.button { display: inline-flex; align-items: center; justify-content: center; font-weight: 600; min-height: 2.75rem; padding: 0.6rem 1.1rem; border-radius: 0.6rem; background: var(--accent); color: var(--accent-text); text-decoration: none; box-sizing: border-box; }
+button.danger { background: var(--danger); color: #fff; }
+.choices { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+.choices form { margin: 0; }
 .chats { gap: 0; }
 .chats li { display: grid; gap: 0.15rem; background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 0.7rem 0.25rem; }
 .chats li:last-child { border-bottom: 0; }

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{t "disc_title"}}{{t "title_sep"}}</title>
+<meta name="theme-color" content="#3b4a8a">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="back"><a href="/">{{t "back"}}</a></p>
+    <h1>{{t "disc_title"}}</h1>
+  </header>
+  <p class="instruction">{{t "disc_q"}}</p>
+  <div class="choices">
+    <form method="post" action="/whatsapp/disconnect">
+      <button type="submit" class="danger">{{t "disconnect"}}</button>
+    </form>
+    <a class="button secondary" href="/">{{t "disc_keep"}}</a>
+  </div>
+</main>
+<footer>{{t "version"}}: {{.Version}}</footer>
+</body>
+</html>

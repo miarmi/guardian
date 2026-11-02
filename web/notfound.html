@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{.Lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Not found – Guardian</title>
+<title>{{t "nf_title"}}{{t "title_sep"}}</title>
 <meta name="theme-color" content="#3b4a8a">
 <link rel="icon" href="/icon-192.png" type="image/png">
 <link rel="stylesheet" href="/static/style.css">
@@ -11,11 +11,11 @@
 <body>
 <main>
   <header>
-    <p class="back"><a href="/">‹ Guardian</a></p>
-    <h1>Not found</h1>
+    <p class="back"><a href="/">{{t "back"}}</a></p>
+    <h1>{{t "nf_title"}}</h1>
   </header>
-  <p class="instruction">There is no such page here.</p>
+  <p class="instruction">{{t "nf_text"}}</p>
 </main>
-<footer>Version: {{.Version}}</footer>
+<footer>{{t "version"}}: {{.Version}}</footer>
 </body>
 </html>
