@@ -17,9 +17,7 @@
     <h1>{{t "set_title"}}</h1>
     <p class="intro">{{t "set_intro"}}</p>
   </header>
-  {{if not .Available}}
-  <p class="note">{{t "an_preview"}}</p>
-  {{else}}
+  {{if not .Available}}<p class="status-line caution">{{t "an_preview"}}</p>{{end}}
   {{if .Saved}}<p class="status-line ok transient" role="status">{{t "saved"}}</p>{{end}}
   {{if .Forgot}}<p class="status-line caution transient" role="status">{{t "key_forgotten"}}</p>{{end}}
   {{if .NoKey}}<p class="status-line caution transient" role="status">{{t "nokey_warn"}}</p>{{end}}
@@ -29,6 +27,7 @@
         data-goes-to="{{t "goes_to" "%s"}}" data-stays-home="{{t "stays_home"}}" data-testing="{{t "testing"}}"
         data-key-host="{{if .KeyHint}}{{.S.Type}} {{.S.Address}}{{end}}" data-key-forgotten="{{t "key_forgotten"}}"
         data-dest-pending="{{t "dest_pending"}}">
+    <fieldset{{if not .Available}} disabled{{end}}>
     <label for="type">{{t "f_type"}}</label>
     <select id="type" name="type">
       <option value="anthropic"{{if eq .S.Type "anthropic"}} selected{{end}}>{{t "t_anthropic"}}</option>
@@ -57,8 +56,8 @@
       <button type="submit">{{t "save"}}</button>
       <button type="submit" class="secondary" formaction="/settings/test" id="test-button">{{t "test"}}</button>
     </div>
+    </fieldset>
   </form>
-  {{end}}
 </main>
 <footer>{{t "version"}}: {{.Version}}</footer>
 <script src="/static/settings.js"></script>

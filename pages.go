@@ -74,6 +74,19 @@ func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
 	a.renderSettings(w, r, d)
 }
 
+// previewSettings reads the saved model settings without any key.
+func previewSettings(ctx context.Context, st *store) modelSettings {
+	get := func(k string) string { v, _ := st.Setting(ctx, k); return v }
+	m := modelSettings{Type: get("model_type"), Address: get("model_address"), Model: get("model_model"), Limit: defaultLimit}
+	if m.Type == "" || m.Type == modelPractice {
+		m.Type, m.Address, m.Model = modelAnthropic, defaultAnthropicAddress, defaultAnthropicModel
+	}
+	if n, err := strconv.Atoi(get("model_limit")); err == nil && n >= 0 {
+		m.Limit = n
+	}
+	return m
+}
+
 func keyHint(k string) string {
 	if k == "" {
 		return ""
@@ -87,7 +100,11 @@ func keyHint(k string) string {
 // renderSettings shows the form with d.S in it (saved or as typed).
 func (a *App) renderSettings(w http.ResponseWriter, r *http.Request, d settingsData) {
 	d.Lang, d.Version = a.lang.code, a.version
-	if a.an != nil {
+	if a.an == nil {
+		// Previews show the form as saved, locked: nothing is analysed there.
+		d.S = previewSettings(r.Context(), a.store)
+		d.Destination = d.S.destination()
+	} else {
 		d.Available = true
 		if d.S.Type == "" {
 			d.S.Type = modelAnthropic

@@ -165,3 +165,5 @@ blockquote { margin: 0.4rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid v
 blockquote .who { display: block; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
 .findings .choices form { margin: 0; }
 .caution-text { color: var(--caution); }
+.form fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 0.35rem; }
+.form fieldset[disabled] { opacity: 0.7; }

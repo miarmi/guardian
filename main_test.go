@@ -252,3 +252,15 @@ func TestNoDevAddressesOutsidePractice(t *testing.T) {
 		t.Fatalf("got %d", rec.Code)
 	}
 }
+
+func TestPreviewSettingsShowLockedForm(t *testing.T) {
+	a := newApp(testStore(t), nil, Config{Env: "p", Language: "cs"})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/settings", nil))
+	body := rec.Body.String()
+	for _, want := range []string{`<fieldset disabled>`, `id="address"`, `id="model"`, `id="key"`, "V náhledu analýza neběží."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("preview settings lack %q", want)
+		}
+	}
+}
