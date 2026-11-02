@@ -68,6 +68,7 @@ type outboxItem struct {
 	Text    string    `json:"text"`
 	Links   []string  `json:"links"`
 	At      time.Time `json:"at"`
+	HTML    string    `json:"html,omitempty"` // e-mails: how they look
 }
 
 // notifier sends pushes and e-mails, makes the child's links and the digest.
@@ -168,7 +169,7 @@ func (n *notifier) send(ctx context.Context, e email) error {
 		if n.mailDown {
 			return errors.New(n.lang.T("practice_mail_down"))
 		}
-		n.outbox = append(n.outbox, outboxItem{Kind: "email", To: strings.Join(e.To, ", "), Subject: e.Subject, Text: e.Text, Links: e.Links, At: time.Now()})
+		n.outbox = append(n.outbox, outboxItem{Kind: "email", To: strings.Join(e.To, ", "), Subject: e.Subject, Text: e.Text, Links: e.Links, At: time.Now(), HTML: e.HTML})
 		return nil
 	case mailSMTP:
 		return sendSMTP(m, e)
