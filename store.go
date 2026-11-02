@@ -3,52 +3,31 @@ package guardian
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"strings"
-	"time"
+	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// Message is one chat message as kept by the app. Media is never kept, only
-// its kind and caption.
-type Message struct {
-	ID         string
-	Chat       string
-	Sender     string
-	SenderName string
-	FromMe     bool
-	At         time.Time
-	Kind       string // text, image, video, audio, sticker, document, reaction, other
-	Text       string
+// store is Guardian's SQLite database. The methods are split by table area:
+// store_chats.go, store_situations.go, store_findings.go, store_help.go and
+// store_push.go.
+type store struct {
+	db *sql.DB
+	// helpMu makes adding to an open help request one step, so two quick
+	// requests from the child can neither both start a new one nor lose a
+	// message while merging.
+	helpMu sync.Mutex
 }
 
-// ChatSummary is one row of the "Chats" list: no content, only counts.
-type ChatSummary struct {
-	JID     string
-	Name    string
-	Suffix  string // set when another chat has the same name
-	First   int64  // when the chat first appeared, for stable numbering
-	IsGroup bool
-	Count   int
-	Last    time.Time
-}
-
-type store struct{ db *sql.DB }
-
-func openStore(path string) (*store, error) {
-	db, err := sql.Open("sqlite3", "file:"+path+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL")
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(4)
-	schema := []string{
-		`CREATE TABLE IF NOT EXISTS chats (
+// schema creates every table on a fresh database.
+var schema = []string{
+	`CREATE TABLE IF NOT EXISTS chats (
 			jid TEXT PRIMARY KEY,
 			name TEXT NOT NULL DEFAULT '',
 			is_group INTEGER NOT NULL DEFAULT 0
 		)`,
-		`CREATE TABLE IF NOT EXISTS messages (
+	`CREATE TABLE IF NOT EXISTS messages (
 			chat TEXT NOT NULL,
 			id TEXT NOT NULL,
 			sender TEXT NOT NULL,
@@ -59,12 +38,12 @@ func openStore(path string) (*store, error) {
 			text TEXT NOT NULL,
 			PRIMARY KEY (chat, id)
 		)`,
-		`CREATE INDEX IF NOT EXISTS messages_chat_at ON messages (chat, at)`,
-		`CREATE TABLE IF NOT EXISTS settings (
+	`CREATE INDEX IF NOT EXISTS messages_chat_at ON messages (chat, at)`,
+	`CREATE TABLE IF NOT EXISTS settings (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		)`,
-		`CREATE TABLE IF NOT EXISTS situations (
+	`CREATE TABLE IF NOT EXISTS situations (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			description TEXT NOT NULL,
@@ -73,7 +52,7 @@ func openStore(path string) (*store, error) {
 			enabled INTEGER NOT NULL DEFAULT 1,
 			builtin INTEGER NOT NULL DEFAULT 0
 		)`,
-		`CREATE TABLE IF NOT EXISTS findings (
+	`CREATE TABLE IF NOT EXISTS findings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			chat TEXT NOT NULL,
 			situation_id INTEGER NOT NULL REFERENCES situations(id) ON DELETE CASCADE,
@@ -84,38 +63,34 @@ func openStore(path string) (*store, error) {
 			status TEXT NOT NULL DEFAULT 'open',
 			seen INTEGER NOT NULL DEFAULT 0
 		)`,
-		`CREATE INDEX IF NOT EXISTS findings_open ON findings (status, chat, situation_id)`,
-		`CREATE TABLE IF NOT EXISTS analysis_cursor (
+	`CREATE INDEX IF NOT EXISTS findings_open ON findings (status, chat, situation_id)`,
+	`CREATE TABLE IF NOT EXISTS analysis_cursor (
 			chat TEXT PRIMARY KEY,
 			upto INTEGER NOT NULL
 		)`,
-	}
-	for _, q := range schema {
-		if _, err := db.Exec(q); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	// Added later. Deleted situations are hidden, their findings stay; who
-	// is told about each situation; the child's request for help.
-	for _, q := range []string{
-		`ALTER TABLE situations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE situations ADD COLUMN recipients TEXT NOT NULL DEFAULT 'both'`,
-		`ALTER TABLE findings ADD COLUMN child_help INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE findings ADD COLUMN child_message TEXT NOT NULL DEFAULT ''`,
-		`ALTER TABLE findings ADD COLUMN help_seen INTEGER NOT NULL DEFAULT 1`,
-		`ALTER TABLE findings ADD COLUMN child_mail_pending INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE findings ADD COLUMN help_at INTEGER NOT NULL DEFAULT 0`,
-		// When the child's e-mail may go out (criterion 25): 0 waits for the
-		// parents' digest, otherwise the time the parents were told (ns).
-		`ALTER TABLE findings ADD COLUMN child_mail_due INTEGER NOT NULL DEFAULT 0`,
-	} {
-		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
-			db.Close()
-			return nil, err
-		}
-	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS help_requests (
+}
+
+// migrations add columns that came later; on a database that has them
+// already they fail with "duplicate column", which is fine.
+var migrations = []string{
+	// Deleted situations are hidden, their findings stay.
+	`ALTER TABLE situations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`,
+	// Left from a removed feature; kept so old and new databases match.
+	`ALTER TABLE situations ADD COLUMN recipients TEXT NOT NULL DEFAULT 'both'`,
+	// The child's request for help with a finding (criterion 26).
+	`ALTER TABLE findings ADD COLUMN child_help INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings ADD COLUMN child_message TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN help_seen INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE findings ADD COLUMN child_mail_pending INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE findings ADD COLUMN help_at INTEGER NOT NULL DEFAULT 0`,
+	// When the child's e-mail may go out (criterion 25): 0 waits for the
+	// parents' digest, otherwise the time the parents were told (ns).
+	`ALTER TABLE findings ADD COLUMN child_mail_due INTEGER NOT NULL DEFAULT 0`,
+}
+
+// laterTables came with phase 3 and are created after the migrations.
+var laterTables = []string{
+	`CREATE TABLE IF NOT EXISTS help_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		created_at INTEGER NOT NULL,
 		updated_at INTEGER NOT NULL,
@@ -123,22 +98,47 @@ func openStore(path string) (*store, error) {
 		status TEXT NOT NULL DEFAULT 'open',
 		seen INTEGER NOT NULL DEFAULT 0,
 		merged INTEGER NOT NULL DEFAULT 0
-	)`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS push_devices (
+	)`,
+	`CREATE TABLE IF NOT EXISTS push_devices (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		endpoint TEXT NOT NULL UNIQUE,
 		p256dh TEXT NOT NULL,
 		auth TEXT NOT NULL,
 		label TEXT NOT NULL,
 		created_at INTEGER NOT NULL
-	)`); err != nil {
+	)`,
+}
+
+func openStore(path string) (*store, error) {
+	db, err := sql.Open("sqlite3", "file:"+path+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL")
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(4)
+	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return &store{db: db}, nil
+}
+
+func migrate(db *sql.DB) error {
+	for _, q := range schema {
+		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
+	for _, q := range migrations {
+		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
+	}
+	for _, q := range laterTables {
+		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *store) Close() error { return s.db.Close() }
@@ -148,60 +148,49 @@ func (s *store) Ping(ctx context.Context) error {
 	return s.db.QueryRowContext(ctx, "SELECT 1").Scan(&one)
 }
 
-// SaveMessage keeps a message; a message seen twice (live and in a history
-// sync) is kept once.
-func (s *store) SaveMessage(ctx context.Context, m Message) error {
-	_, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO messages
-		(chat, id, sender, sender_name, from_me, at, kind, text)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.Chat, m.ID, m.Sender, m.SenderName, m.FromMe, m.At.Unix(), m.Kind, m.Text)
-	return err
-}
+// scanner is a *sql.Row or *sql.Rows.
+type scanner interface{ Scan(dest ...any) error }
 
-// EnsureChat records a chat; a name is only set when one is known and the
-// chat has none yet, or when the new name is given as authoritative.
-func (s *store) EnsureChat(ctx context.Context, jid, name string, isGroup, authoritative bool) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO chats (jid, name, is_group) VALUES (?, ?, ?)
-		ON CONFLICT (jid) DO UPDATE SET
-			name = CASE WHEN ? OR chats.name = '' THEN excluded.name ELSE chats.name END,
-			is_group = excluded.is_group`,
-		jid, name, isGroup, authoritative && name != "")
-	return err
-}
-
-// ChatName returns the stored name of a chat, or "" if none is known.
-func (s *store) ChatName(ctx context.Context, jid string) (string, error) {
-	var name string
-	err := s.db.QueryRowContext(ctx, "SELECT name FROM chats WHERE jid = ?", jid).Scan(&name)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	return name, err
-}
-
-// Chats lists every chat with messages, newest activity first.
-func (s *store) Chats(ctx context.Context) ([]ChatSummary, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.chat, COALESCE(c.name, ''), COALESCE(c.is_group, 0),
-			COUNT(*), MAX(m.at), MIN(m.rowid)
-		FROM messages m LEFT JOIN chats c ON c.jid = m.chat
-		GROUP BY m.chat ORDER BY MAX(m.at) DESC LIMIT 500`)
+// queryAll runs a query and turns every row into a T with scan.
+func queryAll[T any](ctx context.Context, db *sql.DB, scan func(scanner) (T, error), query string, args ...any) ([]T, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []ChatSummary
+	var out []T
 	for rows.Next() {
-		var c ChatSummary
-		var last int64
-		if err := rows.Scan(&c.JID, &c.Name, &c.IsGroup, &c.Count, &last, &c.First); err != nil {
+		v, err := scan(rows)
+		if err != nil {
 			return nil, err
 		}
-		c.Last = time.Unix(last, 0)
-		out = append(out, c)
+		out = append(out, v)
 	}
 	return out, rows.Err()
 }
 
+func scanInt64(sc scanner) (int64, error) {
+	var n int64
+	err := sc.Scan(&n)
+	return n, err
+}
+
+func scanString(sc scanner) (string, error) {
+	var v string
+	err := sc.Scan(&v)
+	return v, err
+}
+
+// count runs a SELECT COUNT(*) style query.
+func (s *store) count(ctx context.Context, query string, args ...any) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&n)
+	return n, err
+}
+
+// --- settings: a key-value table for everything that isn't secret ---
+
+// Setting returns a saved value, or "" when there is none.
 func (s *store) Setting(ctx context.Context, key string) (string, error) {
 	var v string
 	err := s.db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = ?", key).Scan(&v)
@@ -217,553 +206,27 @@ func (s *store) SetSetting(ctx context.Context, key, value string) error {
 	return err
 }
 
-// Messages returns what was kept for one chat, oldest first.
-func (s *store) Messages(ctx context.Context, chat string) ([]Message, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, chat, sender, sender_name, from_me, at, kind, text
-		FROM messages WHERE chat = ? ORDER BY at, rowid`, chat)
+// Settings reads several keys in one query; a missing key, or a key that
+// can't be read, reads as "" (as Setting's callers treated it before).
+func (s *store) Settings(ctx context.Context, keys ...string) map[string]string {
+	out := make(map[string]string, len(keys))
+	if len(keys) == 0 {
+		return out
+	}
+	args := make([]any, len(keys))
+	for i, k := range keys {
+		args[i] = k
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT key, value FROM settings WHERE key IN (?"+strings.Repeat(", ?", len(keys)-1)+")", args...)
 	if err != nil {
-		return nil, err
+		return out
 	}
 	defer rows.Close()
-	var out []Message
 	for rows.Next() {
-		var m Message
-		var at int64
-		if err := rows.Scan(&m.ID, &m.Chat, &m.Sender, &m.SenderName, &m.FromMe, &at, &m.Kind, &m.Text); err != nil {
-			return nil, err
-		}
-		m.At = time.Unix(at, 0)
-		out = append(out, m)
-	}
-	return out, rows.Err()
-}
-
-// Situation is one thing the agent watches for (SPEC.md criterion 14).
-type Situation struct {
-	ID          int64
-	Name        string
-	Description string
-	Sensitivity string // low, medium, high
-	Action      string // record, digest, alert
-	Enabled     bool
-	Builtin     bool
-}
-
-// Quote is one message a finding quotes.
-type Quote struct {
-	SenderName string    `json:"sender_name"`
-	FromMe     bool      `json:"from_me"`
-	At         time.Time `json:"at"`
-	Text       string    `json:"text"`
-}
-
-// Finding is what the analysis reported (criteria 16–18).
-type Finding struct {
-	ID        int64
-	Chat      string
-	ChatName  string
-	Situation Situation
-	Created   time.Time
-	Updated   time.Time
-	Reason    string
-	Quotes    []Quote
-	Status    string // open, resolved, false_alarm
-	Seen      bool
-	// The child pressed "Ano, ať to řeší rodiče" (criterion 26).
-	ChildHelp    bool
-	ChildMessage string
-	HelpAt       time.Time
-}
-
-// ChatLabel is the chat's name, or its id when it has none.
-func (f Finding) ChatLabel() string {
-	if f.ChatName != "" {
-		return f.ChatName
-	}
-	return f.Chat
-}
-
-const situationCols = "id, name, description, sensitivity, action, enabled, builtin"
-
-func scanSituation(sc interface{ Scan(...any) error }) (Situation, error) {
-	var x Situation
-	err := sc.Scan(&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin)
-	return x, err
-}
-
-// Situations lists every situation, built-in ones first, in creation order.
-func (s *store) Situations(ctx context.Context) ([]Situation, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+situationCols+" FROM situations WHERE deleted = 0 ORDER BY builtin DESC, id")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Situation
-	for rows.Next() {
-		x, err := scanSituation(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, x)
-	}
-	return out, rows.Err()
-}
-
-func (s *store) Situation(ctx context.Context, id int64) (Situation, error) {
-	return scanSituation(s.db.QueryRowContext(ctx, "SELECT "+situationCols+" FROM situations WHERE id = ? AND deleted = 0", id))
-}
-
-// SeedSituations adds the default set once, on a fresh database.
-func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error {
-	var n int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM situations").Scan(&n); err != nil || n > 0 {
-		return err
-	}
-	for _, d := range defaults {
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
-			VALUES (?, ?, ?, ?, 1, 1)`, d.Name, d.Description, d.Sensitivity, d.Action); err != nil {
-			return err
+		var k, v string
+		if rows.Scan(&k, &v) == nil {
+			out[k] = v
 		}
 	}
-	return nil
-}
-
-func (s *store) AddSituation(ctx context.Context, x Situation) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
-		VALUES (?, ?, ?, ?, ?, 0)`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
-}
-
-func (s *store) UpdateSituation(ctx context.Context, x Situation) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE situations SET name = ?, description = ?, sensitivity = ?, action = ?, enabled = ?
-		WHERE id = ?`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled, x.ID)
-	return err
-}
-
-// DeleteSituation hides an added situation; the default set stays, and the
-// findings it made stay too (criterion 14).
-func (s *store) DeleteSituation(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE situations SET deleted = 1, enabled = 0 WHERE id = ? AND builtin = 0", id)
-	return err
-}
-
-// PendingChats lists chats with messages the analysis has not looked at.
-func (s *store) PendingChats(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT m.chat FROM messages m
-		LEFT JOIN analysis_cursor c ON c.chat = m.chat
-		GROUP BY m.chat HAVING MAX(m.rowid) > COALESCE(MAX(c.upto), 0)
-		ORDER BY MAX(m.at)`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
-}
-
-// numbered is a message with its storage position, for the analysis cursor.
-type numbered struct {
-	Message
-	Seq int64
-}
-
-// ChatWindow returns up to `context` earlier messages already looked at and
-// every message not yet looked at, oldest first.
-func (s *store) ChatWindow(ctx context.Context, chat string, context int) (old, fresh []numbered, err error) {
-	var upto int64
-	err = s.db.QueryRowContext(ctx, "SELECT upto FROM analysis_cursor WHERE chat = ?", chat).Scan(&upto)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, nil, err
-	}
-	load := func(q string, args ...any) ([]numbered, error) {
-		rows, err := s.db.QueryContext(ctx, q, args...)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		var out []numbered
-		for rows.Next() {
-			var m numbered
-			var at int64
-			if err := rows.Scan(&m.Seq, &m.ID, &m.Sender, &m.SenderName, &m.FromMe, &at, &m.Kind, &m.Text); err != nil {
-				return nil, err
-			}
-			m.Chat, m.At = chat, time.Unix(at, 0)
-			out = append(out, m)
-		}
-		return out, rows.Err()
-	}
-	const cols = "rowid, id, sender, sender_name, from_me, at, kind, text"
-	old, err = load(`SELECT * FROM (SELECT `+cols+` FROM messages WHERE chat = ? AND rowid <= ?
-		ORDER BY rowid DESC LIMIT ?) ORDER BY rowid`, chat, upto, context)
-	if err != nil {
-		return nil, nil, err
-	}
-	fresh, err = load(`SELECT `+cols+` FROM messages WHERE chat = ? AND rowid > ? ORDER BY rowid`, chat, upto)
-	return old, fresh, err
-}
-
-// MarkAnalyzed moves the chat's cursor past the messages just looked at.
-func (s *store) MarkAnalyzed(ctx context.Context, chat string, upto int64) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO analysis_cursor (chat, upto) VALUES (?, ?)
-		ON CONFLICT (chat) DO UPDATE SET upto = MAX(upto, excluded.upto)`, chat, upto)
-	return err
-}
-
-// RecordFinding adds a finding, or adds to the open one for the same
-// situation in the same chat (criterion 17). It returns the finding's id and
-// whether it is new.
-func (s *store) RecordFinding(ctx context.Context, chat string, situationID int64, reason string, quotes []Quote, now time.Time) (int64, bool, error) {
-	q, err := json.Marshal(quotes)
-	if err != nil {
-		return 0, false, err
-	}
-	var id int64
-	err = s.db.QueryRowContext(ctx, `SELECT id FROM findings WHERE chat = ? AND situation_id = ? AND status = 'open'`, chat, situationID).Scan(&id)
-	if err == nil {
-		_, err = s.db.ExecContext(ctx, `UPDATE findings SET updated_at = ?, reason = ?, quotes = ?, seen = 0 WHERE id = ?`,
-			now.Unix(), reason, string(q), id)
-		return id, false, err
-	}
-	if err != sql.ErrNoRows {
-		return 0, false, err
-	}
-	res, err := s.db.ExecContext(ctx, `INSERT INTO findings (chat, situation_id, created_at, updated_at, reason, quotes)
-		VALUES (?, ?, ?, ?, ?, ?)`, chat, situationID, now.Unix(), now.Unix(), reason, string(q))
-	if err != nil {
-		return 0, false, err
-	}
-	id, err = res.LastInsertId()
-	return id, true, err
-}
-
-// Findings lists findings: open ones first, then newest first.
-func (s *store) Findings(ctx context.Context) ([]Finding, error) {
-	return s.findingsWhere(ctx, "1 = 1", "ORDER BY f.status = 'open' DESC, f.updated_at DESC, f.id DESC LIMIT 500")
-}
-
-// Finding returns one finding, if it exists.
-func (s *store) Finding(ctx context.Context, id int64) (Finding, bool, error) {
-	fs, err := s.findingsWhere(ctx, "f.id = ?", "", id)
-	if err != nil || len(fs) == 0 {
-		return Finding{}, false, err
-	}
-	return fs[0], true, nil
-}
-
-// FindingsSince lists findings created or changed since a time, oldest first.
-func (s *store) FindingsSince(ctx context.Context, since time.Time) ([]Finding, error) {
-	return s.findingsWhere(ctx, "f.updated_at >= ?", "ORDER BY f.created_at, f.id", since.Unix())
-}
-
-func (s *store) findingsWhere(ctx context.Context, where, order string, args ...any) ([]Finding, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT f.id, f.chat, COALESCE(c.name, ''), f.created_at, f.updated_at,
-			f.reason, f.quotes, f.status, f.seen, f.child_help, f.child_message, f.help_at, `+prefixed("s.", situationCols)+`
-		FROM findings f JOIN situations s ON s.id = f.situation_id LEFT JOIN chats c ON c.jid = f.chat
-		WHERE `+where+` `+order, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Finding
-	for rows.Next() {
-		var f Finding
-		var created, updated, helpAt int64
-		var quotes string
-		x := &f.Situation
-		if err := rows.Scan(&f.ID, &f.Chat, &f.ChatName, &created, &updated, &f.Reason, &quotes, &f.Status, &f.Seen,
-			&f.ChildHelp, &f.ChildMessage, &helpAt,
-			&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin); err != nil {
-			return nil, err
-		}
-		f.Created, f.Updated = time.Unix(created, 0), time.Unix(updated, 0)
-		if helpAt > 0 {
-			f.HelpAt = time.Unix(helpAt, 0)
-		}
-		_ = json.Unmarshal([]byte(quotes), &f.Quotes)
-		out = append(out, f)
-	}
-	return out, rows.Err()
-}
-
-func prefixed(p, cols string) string {
-	parts := strings.Split(cols, ", ")
-	for i := range parts {
-		parts[i] = p + parts[i]
-	}
-	return strings.Join(parts, ", ")
-}
-
-// MarkFinding resolves a finding, calls it a false alarm, or reopens it.
-// Reopening is refused when the same situation is already open in that chat.
-func (s *store) MarkFinding(ctx context.Context, id int64, status string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE findings SET status = ?, seen = 1 WHERE id = ?
-		AND NOT (? = 'open' AND EXISTS (SELECT 1 FROM findings o WHERE o.status = 'open' AND o.id != findings.id
-			AND o.chat = findings.chat AND o.situation_id = findings.situation_id))`, status, id, status)
-	return err
-}
-
-// MarkFindingsSeen is called when the findings page is opened.
-func (s *store) MarkFindingsSeen(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE findings SET seen = 1 WHERE seen = 0")
-	return err
-}
-
-// OpenFindingCount counts findings still open.
-func (s *store) OpenFindingCount(ctx context.Context) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM findings WHERE status = 'open'").Scan(&n)
-	return n, err
-}
-
-// UnseenAlert returns the newest open, unseen finding whose situation says
-// "alert at once", if any.
-func (s *store) UnseenAlert(ctx context.Context) (situation, chatName, chat string, ok bool, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT s.name, COALESCE(c.name, ''), f.chat FROM findings f
-		JOIN situations s ON s.id = f.situation_id LEFT JOIN chats c ON c.jid = f.chat
-		WHERE f.status = 'open' AND f.seen = 0 AND s.action = 'alert'
-		ORDER BY f.updated_at DESC LIMIT 1`).Scan(&situation, &chatName, &chat)
-	if err == sql.ErrNoRows {
-		return "", "", "", false, nil
-	}
-	return situation, chatName, chat, err == nil, err
-}
-
-// AskForHelp records the child's request for help with a finding.
-func (s *store) AskForHelp(ctx context.Context, id int64, message string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE findings SET child_help = 1, child_message = ?, help_seen = 0, help_at = ? WHERE id = ?`,
-		message, time.Now().Unix(), id)
-	return err
-}
-
-// UnseenHelp returns the newest request for help the parents haven't opened.
-func (s *store) UnseenHelp(ctx context.Context) (situation, chatName, chat string, ok bool, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT s.name, COALESCE(c.name, ''), f.chat FROM findings f
-		JOIN situations s ON s.id = f.situation_id LEFT JOIN chats c ON c.jid = f.chat
-		WHERE f.child_help = 1 AND f.help_seen = 0
-		ORDER BY f.updated_at DESC LIMIT 1`).Scan(&situation, &chatName, &chat)
-	if err == sql.ErrNoRows {
-		return "", "", "", false, nil
-	}
-	return situation, chatName, chat, err == nil, err
-}
-
-// MarkHelpSeen is called when the findings page is opened.
-func (s *store) MarkHelpSeen(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE findings SET help_seen = 1 WHERE help_seen = 0")
-	return err
-}
-
-// PushDevice is one browser subscribed to push (criterion 22).
-type PushDevice struct {
-	ID       int64
-	Endpoint string
-	P256dh   string
-	Auth     string
-	Label    string
-	Created  time.Time
-}
-
-func (s *store) AddPushDevice(ctx context.Context, d PushDevice) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO push_devices (endpoint, p256dh, auth, label, created_at) VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, label = excluded.label`,
-		d.Endpoint, d.P256dh, d.Auth, d.Label, time.Now().Unix())
-	return err
-}
-
-func (s *store) PushDevices(ctx context.Context) ([]PushDevice, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, endpoint, p256dh, auth, label, created_at FROM push_devices ORDER BY id")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []PushDevice
-	for rows.Next() {
-		var d PushDevice
-		var created int64
-		if err := rows.Scan(&d.ID, &d.Endpoint, &d.P256dh, &d.Auth, &d.Label, &created); err != nil {
-			return nil, err
-		}
-		d.Created = time.Unix(created, 0)
-		out = append(out, d)
-	}
-	return out, rows.Err()
-}
-
-func (s *store) RemovePushDevice(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM push_devices WHERE id = ?", id)
-	return err
-}
-
-func (s *store) RemovePushEndpoint(ctx context.Context, endpoint string) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM push_devices WHERE endpoint = ?", endpoint)
-	return err
-}
-
-// CountChats counts the chats with any message.
-func (s *store) CountChats(ctx context.Context) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT chat) FROM messages").Scan(&n)
-	return n, err
-}
-
-// QueueChildMail says the child's e-mail about a finding is to go out:
-// due is when the parents were told, or zero to wait for their digest.
-func (s *store) QueueChildMail(ctx context.Context, id int64, due time.Time) error {
-	var at int64
-	if !due.IsZero() {
-		at = due.UnixNano()
-	}
-	_, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_pending = 1, child_mail_due = ? WHERE id = ?", at, id)
-	return err
-}
-
-// ChildMailSent clears the queued e-mail.
-func (s *store) ChildMailSent(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_pending = 0 WHERE id = ?", id)
-	return err
-}
-
-// ChildMailsDue lists findings whose e-mail to the child may go out: the
-// parents were told before `before`.
-func (s *store) ChildMailsDue(ctx context.Context, before time.Time) ([]int64, error) {
-	return s.ids(ctx, "SELECT id FROM findings WHERE child_mail_pending = 1 AND child_mail_due > 0 AND child_mail_due < ? ORDER BY id", before.UnixNano())
-}
-
-// ReleaseDigestMails marks the e-mails that waited for the parents' digest
-// as due now, and returns them.
-func (s *store) ReleaseDigestMails(ctx context.Context, upto time.Time) ([]int64, error) {
-	ids, err := s.ids(ctx, "SELECT id FROM findings WHERE child_mail_pending = 1 AND child_mail_due = 0 AND created_at <= ? ORDER BY id", upto.Unix())
-	if err != nil {
-		return nil, err
-	}
-	for _, id := range ids {
-		if _, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_due = ? WHERE id = ?", upto.UnixNano(), id); err != nil {
-			return nil, err
-		}
-	}
-	return ids, nil
-}
-
-func (s *store) ids(ctx context.Context, q string, args ...any) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out = append(out, id)
-	}
-	return out, rows.Err()
-}
-
-// HelpRequest is the child asking for help through the personal link
-// (criterion 30).
-type HelpRequest struct {
-	ID      int64
-	Created time.Time
-	Updated time.Time
-	Message string
-	Status  string // open, resolved
-}
-
-// helpMerge is how long a second request adds to the first.
-const helpMerge = 10 * time.Minute
-
-// AddHelpRequest records a request; within helpMerge of the last open one
-// it adds to that one instead (isNew false). Merged parts each start with
-// their time, written by stamp.
-func (s *store) AddHelpRequest(ctx context.Context, message string, stamp func(time.Time) string) (id int64, isNew bool, err error) {
-	now := time.Now()
-	var old string
-	var created int64
-	var merged bool
-	err = s.db.QueryRowContext(ctx, `SELECT id, message, created_at, merged FROM help_requests WHERE status = 'open' AND created_at >= ?
-		ORDER BY id DESC LIMIT 1`, now.Add(-helpMerge).Unix()).Scan(&id, &old, &created, &merged)
-	if err == nil {
-		if message != "" {
-			if old != "" && !merged {
-				old = stamp(time.Unix(created, 0)) + " " + old
-			}
-			if old != "" {
-				old += "\n"
-			}
-			old += stamp(now) + " " + message
-			merged = true
-		}
-		_, err = s.db.ExecContext(ctx, "UPDATE help_requests SET message = ?, merged = ?, updated_at = ?, seen = 0 WHERE id = ?", old, merged, now.Unix(), id)
-		return id, false, err
-	}
-	if err != sql.ErrNoRows {
-		return 0, false, err
-	}
-	res, err := s.db.ExecContext(ctx, "INSERT INTO help_requests (created_at, updated_at, message) VALUES (?, ?, ?)", now.Unix(), now.Unix(), message)
-	if err != nil {
-		return 0, false, err
-	}
-	id, err = res.LastInsertId()
-	return id, true, err
-}
-
-func (s *store) helpRequestsWhere(ctx context.Context, where, order string, args ...any) ([]HelpRequest, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, created_at, updated_at, message, status FROM help_requests WHERE "+where+" "+order, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []HelpRequest
-	for rows.Next() {
-		var h HelpRequest
-		var c, u int64
-		if err := rows.Scan(&h.ID, &c, &u, &h.Message, &h.Status); err != nil {
-			return nil, err
-		}
-		h.Created, h.Updated = time.Unix(c, 0), time.Unix(u, 0)
-		out = append(out, h)
-	}
-	return out, rows.Err()
-}
-
-// HelpRequests lists requests: open ones first, newest first.
-func (s *store) HelpRequests(ctx context.Context) ([]HelpRequest, error) {
-	return s.helpRequestsWhere(ctx, "1 = 1", "ORDER BY status = 'open' DESC, updated_at DESC, id DESC LIMIT 200")
-}
-
-// HelpRequestsSince lists requests made or changed since a time, oldest first.
-func (s *store) HelpRequestsSince(ctx context.Context, since time.Time) ([]HelpRequest, error) {
-	return s.helpRequestsWhere(ctx, "updated_at >= ?", "ORDER BY created_at, id", since.Unix())
-}
-
-// MarkHelpRequest resolves or reopens a request.
-func (s *store) MarkHelpRequest(ctx context.Context, id int64, status string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE help_requests SET status = ?, seen = 1 WHERE id = ?", status, id)
-	return err
-}
-
-// UnseenHelpRequest says whether a request waits for the parents to open Nálezy.
-func (s *store) UnseenHelpRequest(ctx context.Context) (bool, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM help_requests WHERE seen = 0").Scan(&n)
-	return n > 0, err
-}
-
-// MarkHelpRequestsSeen is called when the findings page is opened.
-func (s *store) MarkHelpRequestsSeen(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE help_requests SET seen = 1 WHERE seen = 0")
-	return err
+	return out
 }

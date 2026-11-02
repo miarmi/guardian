@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Guardian</title>
-<meta name="theme-color" content="#3b4a8a">
+<meta name="theme-color" content="#1e6b64">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Guardian">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -14,7 +14,6 @@
 </head>
 <body>
 <main>
-  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}}{{with .Analysis.AlertMore}} <span class="banner-more">{{.}}</span>{{end}} <span class="banner-go">{{t "open_arrow"}}</span></a>{{end}}
   <header>
     <div class="title-row">
       <h1>Guardian</h1>
@@ -27,6 +26,7 @@
       <a href="/settings">{{t "nav_settings"}}</a>
     </nav>
   </header>
+  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}}{{with .Analysis.AlertMore}} <span class="banner-more">{{.}}</span>{{end}} <span class="banner-go">{{t "open_arrow"}}</span></a>{{end}}
 
   <section aria-labelledby="connectors-heading">
     <h2 id="connectors-heading">{{t "connectors"}}</h2>
