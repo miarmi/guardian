@@ -47,6 +47,9 @@ type Config struct {
 	TimeZone string
 	// Language of the pages: "en" (default) or "cs".
 	Language string
+	// BaseURL is the app's own address, for links in e-mails and pushes
+	// (e.g. https://guardian.lab.example.cz).
+	BaseURL string
 }
 
 // App is one running Guardian: a store, optionally a WhatsApp connector, and
@@ -56,6 +59,7 @@ type App struct {
 	wa       connector // nil when neither Connect nor Practice is set
 	dev      *practice // non-nil only in practice mode
 	an       *analyzer // nil when wa is nil (previews): nothing is analysed there
+	nt       *notifier // always: the child's links must answer everywhere
 	pages    map[string]*template.Template
 	stop     context.CancelFunc
 	preview  string
@@ -97,6 +101,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		loopCtx, cancel := context.WithCancel(context.Background())
 		a.stop = cancel
 		go a.an.loop(loopCtx)
+		go a.nt.digestLoop(loopCtx)
 		return a, nil
 	case cfg.Practice:
 		p := newPractice(st)
@@ -166,13 +171,15 @@ func newApp(st *store, wa connector, cfg Config) *App {
 			"situations": template.Must(template.New("situations.html").Funcs(funcs).ParseFS(webFS, "web/situations.html")),
 			"findings":   template.Must(template.New("findings.html").Funcs(funcs).ParseFS(webFS, "web/findings.html")),
 			"delete":     template.Must(template.New("delsituation.html").Funcs(funcs).ParseFS(webFS, "web/delsituation.html")),
+			"kid":        template.Must(template.New("kid.html").Funcs(funcs).ParseFS(webFS, "web/kid.html")),
 		},
 		static: http.StripPrefix("/static/", http.FileServer(http.FS(sub))),
 		icons:  makeIcons(),
 		zone:   zone,
 	}
+	a.nt = &notifier{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, baseURL: cfg.BaseURL, practice: cfg.Practice}
 	if wa != nil {
-		a.an = &analyzer{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir}
+		a.an = &analyzer{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, notify: a.nt.onFinding}
 		if cfg.Practice {
 			a.an.practice = &practiceModel{reason: l.T("practice_reason"), errText: l.T("practice_unreachable")}
 		}
@@ -211,11 +218,24 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /findings", a.findingsPage)
 	mux.HandleFunc("POST /findings/{id}/{status}", a.markFinding)
 	mux.Handle("GET /static/settings.js", a.static)
+	mux.Handle("GET /static/push.js", a.static)
+	mux.HandleFunc("GET /sw.js", a.serviceWorker)
+	mux.HandleFunc("GET /kid/style.css", a.kidStyle)
+	mux.HandleFunc("GET /kid/{token}", a.kidPage)
+	mux.HandleFunc("POST /kid/{token}", a.kidAsk)
+	mux.HandleFunc("GET /push/key", a.pushKey)
+	mux.HandleFunc("POST /push/subscribe", a.pushSubscribe)
+	mux.HandleFunc("POST /push/devices/{id}/delete", a.pushRemove)
+	mux.HandleFunc("POST /settings/mail", a.saveMail)
+	mux.HandleFunc("POST /settings/mail/test", a.testMailHandler)
 	if a.dev != nil {
 		a.dev.routes(mux)
 		if a.an != nil && a.an.practice != nil {
 			mux.HandleFunc("POST /dev/analysis/run", a.devRunAnalysis)
 			mux.HandleFunc("POST /dev/model/unreachable", a.devModelUnreachable)
+			mux.HandleFunc("GET /dev/outbox", a.nt.devOutbox)
+			mux.HandleFunc("POST /dev/digest/run", a.nt.devDigest)
+			mux.HandleFunc("POST /dev/mail/unreachable", a.nt.devMailDown)
 		}
 	}
 	mux.HandleFunc("/", a.notFound)
@@ -415,6 +435,31 @@ func (a *App) render(w http.ResponseWriter, t *template.Template, status int, da
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	w.Write(buf.Bytes())
+}
+
+// kidStyle serves the stylesheet under /kid/, the only path the child can
+// reach without the lab login.
+func (a *App) kidStyle(w http.ResponseWriter, r *http.Request) {
+	b, err := webFS.ReadFile("web/style.css")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(b)
+}
+
+// serviceWorker shows pushes and opens Guardian when one is tapped.
+func (a *App) serviceWorker(w http.ResponseWriter, r *http.Request) {
+	b, err := webFS.ReadFile("web/sw.js")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(b)
 }
 
 func (a *App) notFound(w http.ResponseWriter, r *http.Request) {

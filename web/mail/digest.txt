@@ -1,0 +1,13 @@
+Guardian
+
+{{if .Findings}}{{.L.T "digest_intro"}}
+{{range .Findings}}
+- {{.Situation.Name}} ({{if eq .Status "resolved"}}{{$.L.T "digest_resolved"}}{{else if eq .Status "false_alarm"}}{{$.L.T "digest_false"}}{{else}}{{$.L.T "digest_open"}}{{end}})
+  {{$.L.T "fin_in_chat" .ChatLabel}}
+  {{.Reason}}
+{{end}}{{else}}{{.L.T "digest_none"}}
+{{end}}
+{{.L.T "digest_chats" .Chats}}
+{{if .Child}}
+{{range .Contacts}}{{.}}
+{{end}}{{end}}

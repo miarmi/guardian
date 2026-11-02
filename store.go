@@ -96,9 +96,28 @@ func openStore(path string) (*store, error) {
 			return nil, err
 		}
 	}
-	// Added later: deleted situations are hidden, their findings stay.
-	if _, err := db.Exec(`ALTER TABLE situations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`); err != nil &&
-		!strings.Contains(err.Error(), "duplicate column") {
+	// Added later. Deleted situations are hidden, their findings stay; who
+	// is told about each situation; the child's request for help.
+	for _, q := range []string{
+		`ALTER TABLE situations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE situations ADD COLUMN recipients TEXT NOT NULL DEFAULT 'both'`,
+		`ALTER TABLE findings ADD COLUMN child_help INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE findings ADD COLUMN child_message TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE findings ADD COLUMN help_seen INTEGER NOT NULL DEFAULT 1`,
+	} {
+		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			db.Close()
+			return nil, err
+		}
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS push_devices (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		endpoint TEXT NOT NULL UNIQUE,
+		p256dh TEXT NOT NULL,
+		auth TEXT NOT NULL,
+		label TEXT NOT NULL,
+		created_at INTEGER NOT NULL
+	)`); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -211,7 +230,12 @@ type Situation struct {
 	Action      string // record, digest, alert
 	Enabled     bool
 	Builtin     bool
+	Recipients  string // parents, child, both (criterion 24)
 }
+
+// tellsParents and tellsChild say who hears about this situation.
+func (x Situation) tellsParents() bool { return x.Recipients != "child" }
+func (x Situation) tellsChild() bool   { return x.Recipients != "parents" }
 
 // Quote is one message a finding quotes.
 type Quote struct {
@@ -233,13 +257,24 @@ type Finding struct {
 	Quotes    []Quote
 	Status    string // open, resolved, false_alarm
 	Seen      bool
+	// The child pressed "Ano, ať to řeší rodiče" (criterion 26).
+	ChildHelp    bool
+	ChildMessage string
 }
 
-const situationCols = "id, name, description, sensitivity, action, enabled, builtin"
+// ChatLabel is the chat's name, or its id when it has none.
+func (f Finding) ChatLabel() string {
+	if f.ChatName != "" {
+		return f.ChatName
+	}
+	return f.Chat
+}
+
+const situationCols = "id, name, description, sensitivity, action, enabled, builtin, recipients"
 
 func scanSituation(sc interface{ Scan(...any) error }) (Situation, error) {
 	var x Situation
-	err := sc.Scan(&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin)
+	err := sc.Scan(&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin, &x.Recipients)
 	return x, err
 }
 
@@ -272,8 +307,8 @@ func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error 
 		return err
 	}
 	for _, d := range defaults {
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
-			VALUES (?, ?, ?, ?, 1, 1)`, d.Name, d.Description, d.Sensitivity, d.Action); err != nil {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin, recipients)
+			VALUES (?, ?, ?, ?, 1, 1, 'both')`, d.Name, d.Description, d.Sensitivity, d.Action); err != nil {
 			return err
 		}
 	}
@@ -281,8 +316,8 @@ func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error 
 }
 
 func (s *store) AddSituation(ctx context.Context, x Situation) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
-		VALUES (?, ?, ?, ?, ?, 0)`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled)
+	res, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin, recipients)
+		VALUES (?, ?, ?, ?, ?, 0, ?)`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled, x.Recipients)
 	if err != nil {
 		return 0, err
 	}
@@ -290,8 +325,8 @@ func (s *store) AddSituation(ctx context.Context, x Situation) (int64, error) {
 }
 
 func (s *store) UpdateSituation(ctx context.Context, x Situation) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE situations SET name = ?, description = ?, sensitivity = ?, action = ?, enabled = ?
-		WHERE id = ?`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled, x.ID)
+	_, err := s.db.ExecContext(ctx, `UPDATE situations SET name = ?, description = ?, sensitivity = ?, action = ?, enabled = ?, recipients = ?
+		WHERE id = ?`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled, x.Recipients, x.ID)
 	return err
 }
 
@@ -373,31 +408,56 @@ func (s *store) MarkAnalyzed(ctx context.Context, chat string, upto int64) error
 }
 
 // RecordFinding adds a finding, or adds to the open one for the same
-// situation in the same chat (criterion 17).
-func (s *store) RecordFinding(ctx context.Context, chat string, situationID int64, reason string, quotes []Quote, now time.Time) error {
+// situation in the same chat (criterion 17). It returns the finding's id and
+// whether it is new.
+func (s *store) RecordFinding(ctx context.Context, chat string, situationID int64, reason string, quotes []Quote, now time.Time) (int64, bool, error) {
 	q, err := json.Marshal(quotes)
 	if err != nil {
-		return err
+		return 0, false, err
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE findings SET updated_at = ?, reason = ?, quotes = ?, seen = 0
-		WHERE chat = ? AND situation_id = ? AND status = 'open'`, now.Unix(), reason, string(q), chat, situationID)
-	if err != nil {
-		return err
+	var id int64
+	err = s.db.QueryRowContext(ctx, `SELECT id FROM findings WHERE chat = ? AND situation_id = ? AND status = 'open'`, chat, situationID).Scan(&id)
+	if err == nil {
+		_, err = s.db.ExecContext(ctx, `UPDATE findings SET updated_at = ?, reason = ?, quotes = ?, seen = 0 WHERE id = ?`,
+			now.Unix(), reason, string(q), id)
+		return id, false, err
 	}
-	if n, _ := res.RowsAffected(); n > 0 {
-		return nil
+	if err != sql.ErrNoRows {
+		return 0, false, err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO findings (chat, situation_id, created_at, updated_at, reason, quotes)
+	res, err := s.db.ExecContext(ctx, `INSERT INTO findings (chat, situation_id, created_at, updated_at, reason, quotes)
 		VALUES (?, ?, ?, ?, ?, ?)`, chat, situationID, now.Unix(), now.Unix(), reason, string(q))
-	return err
+	if err != nil {
+		return 0, false, err
+	}
+	id, err = res.LastInsertId()
+	return id, true, err
 }
 
 // Findings lists findings: open ones first, then newest first.
 func (s *store) Findings(ctx context.Context) ([]Finding, error) {
+	return s.findingsWhere(ctx, "1 = 1", "ORDER BY f.status = 'open' DESC, f.updated_at DESC, f.id DESC LIMIT 500")
+}
+
+// Finding returns one finding, if it exists.
+func (s *store) Finding(ctx context.Context, id int64) (Finding, bool, error) {
+	fs, err := s.findingsWhere(ctx, "f.id = ?", "", id)
+	if err != nil || len(fs) == 0 {
+		return Finding{}, false, err
+	}
+	return fs[0], true, nil
+}
+
+// FindingsSince lists findings created or changed since a time, oldest first.
+func (s *store) FindingsSince(ctx context.Context, since time.Time) ([]Finding, error) {
+	return s.findingsWhere(ctx, "f.updated_at >= ?", "ORDER BY f.created_at, f.id", since.Unix())
+}
+
+func (s *store) findingsWhere(ctx context.Context, where, order string, args ...any) ([]Finding, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT f.id, f.chat, COALESCE(c.name, ''), f.created_at, f.updated_at,
-			f.reason, f.quotes, f.status, f.seen, `+prefixed("s.", situationCols)+`
+			f.reason, f.quotes, f.status, f.seen, f.child_help, f.child_message, `+prefixed("s.", situationCols)+`
 		FROM findings f JOIN situations s ON s.id = f.situation_id LEFT JOIN chats c ON c.jid = f.chat
-		ORDER BY f.status = 'open' DESC, f.updated_at DESC, f.id DESC LIMIT 500`)
+		WHERE `+where+` `+order, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +469,8 @@ func (s *store) Findings(ctx context.Context) ([]Finding, error) {
 		var quotes string
 		x := &f.Situation
 		if err := rows.Scan(&f.ID, &f.Chat, &f.ChatName, &created, &updated, &f.Reason, &quotes, &f.Status, &f.Seen,
-			&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin); err != nil {
+			&f.ChildHelp, &f.ChildMessage,
+			&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin, &x.Recipients); err != nil {
 			return nil, err
 		}
 		f.Created, f.Updated = time.Unix(created, 0), time.Unix(updated, 0)
@@ -460,4 +521,81 @@ func (s *store) UnseenAlert(ctx context.Context) (situation, chatName, chat stri
 		return "", "", "", false, nil
 	}
 	return situation, chatName, chat, err == nil, err
+}
+
+// AskForHelp records the child's request for help with a finding.
+func (s *store) AskForHelp(ctx context.Context, id int64, message string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE findings SET child_help = 1, child_message = ?, help_seen = 0 WHERE id = ?`, message, id)
+	return err
+}
+
+// UnseenHelp returns the newest request for help the parents haven't opened.
+func (s *store) UnseenHelp(ctx context.Context) (situation, chatName, chat string, ok bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT s.name, COALESCE(c.name, ''), f.chat FROM findings f
+		JOIN situations s ON s.id = f.situation_id LEFT JOIN chats c ON c.jid = f.chat
+		WHERE f.child_help = 1 AND f.help_seen = 0
+		ORDER BY f.updated_at DESC LIMIT 1`).Scan(&situation, &chatName, &chat)
+	if err == sql.ErrNoRows {
+		return "", "", "", false, nil
+	}
+	return situation, chatName, chat, err == nil, err
+}
+
+// MarkHelpSeen is called when the findings page is opened.
+func (s *store) MarkHelpSeen(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE findings SET help_seen = 1 WHERE help_seen = 0")
+	return err
+}
+
+// PushDevice is one browser subscribed to push (criterion 22).
+type PushDevice struct {
+	ID       int64
+	Endpoint string
+	P256dh   string
+	Auth     string
+	Label    string
+	Created  time.Time
+}
+
+func (s *store) AddPushDevice(ctx context.Context, d PushDevice) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO push_devices (endpoint, p256dh, auth, label, created_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, label = excluded.label`,
+		d.Endpoint, d.P256dh, d.Auth, d.Label, time.Now().Unix())
+	return err
+}
+
+func (s *store) PushDevices(ctx context.Context) ([]PushDevice, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, endpoint, p256dh, auth, label, created_at FROM push_devices ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PushDevice
+	for rows.Next() {
+		var d PushDevice
+		var created int64
+		if err := rows.Scan(&d.ID, &d.Endpoint, &d.P256dh, &d.Auth, &d.Label, &created); err != nil {
+			return nil, err
+		}
+		d.Created = time.Unix(created, 0)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+func (s *store) RemovePushDevice(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM push_devices WHERE id = ?", id)
+	return err
+}
+
+func (s *store) RemovePushEndpoint(ctx context.Context, endpoint string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM push_devices WHERE endpoint = ?", endpoint)
+	return err
+}
+
+// CountChats counts the chats with any message.
+func (s *store) CountChats(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT chat) FROM messages").Scan(&n)
+	return n, err
 }

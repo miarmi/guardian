@@ -58,8 +58,74 @@
     </div>
     </fieldset>
   </form>
+
+  <section id="notifications" aria-labelledby="notif-heading" class="settings-section">
+    <h2 id="notif-heading">{{t "notif_title"}}</h2>
+    <button type="button" id="push-on"{{if not .Available}} disabled{{end}}
+      data-unsupported="{{t "notif_unsupported"}}" data-denied="{{t "notif_denied"}}" data-added="{{t "notif_added"}}">{{t "notif_on"}}</button>
+    <p class="note" id="push-note" role="status" hidden></p>
+    <h3>{{t "notif_devices"}}</h3>
+    {{if .Mail.Devices}}
+    <ul class="devices" aria-label="{{t "notif_devices"}}">
+      {{range .Mail.Devices}}<li><span>{{.Label}} · {{when .Created}}</span>
+        <form method="post" action="/push/devices/{{.ID}}/delete"><button type="submit" class="secondary">{{t "notif_off"}}</button></form></li>
+      {{end}}
+    </ul>
+    {{else}}<p class="note">{{t "notif_none"}}</p>{{end}}
+  </section>
+
+  <section id="mail" aria-labelledby="mail-heading" class="settings-section">
+    <h2 id="mail-heading">{{t "mail_title"}}</h2>
+    {{if .Mail.Saved}}<p class="status-line ok transient" role="status">{{t "mail_saved"}}</p>{{end}}
+    {{if .Mail.Result}}<p class="status-line{{if .Mail.ResultOK}} ok{{else}} warn{{end}}" role="status">{{.Mail.Result}}</p>{{end}}
+    <form method="post" action="/settings/mail" class="form" id="mail-form">
+      <fieldset{{if not .Available}} disabled{{end}}>
+      <label for="child_email">{{t "f_child_email"}}</label>
+      <input id="child_email" name="child_email" type="email" inputmode="email" autocomplete="off" value="{{.Mail.M.ChildEmail}}">
+      <label for="parent_emails">{{t "f_parent_emails"}}</label>
+      <input id="parent_emails" name="parent_emails" type="text" inputmode="email" autocomplete="off" value="{{.Mail.M.ParentEmails}}">
+      <p class="note">{{t "f_parent_hint"}}</p>
+      <label for="mail_type">{{t "f_sending"}}</label>
+      <select id="mail_type" name="mail_type">
+        <option value="graph"{{if eq .Mail.M.Type "graph"}} selected{{end}}>{{t "s_graph"}}</option>
+        <option value="smtp"{{if eq .Mail.M.Type "smtp"}} selected{{end}}>{{t "s_smtp"}}</option>
+        {{if .Mail.Practice}}<option value="practice"{{if eq .Mail.M.Type "practice"}} selected{{end}}>{{t "s_practice"}}</option>{{end}}
+      </select>
+      <div class="fields" id="graph-fields"{{if ne .Mail.M.Type "graph"}} hidden{{end}}>
+        <p class="note">{{t "graph_hint"}}</p>
+        <label for="tenant">{{t "f_tenant"}}</label>
+        <input id="tenant" name="tenant" type="text" autocomplete="off" spellcheck="false" value="{{.Mail.M.Tenant}}">
+        <label for="app_id">{{t "f_app_id"}}</label>
+        <input id="app_id" name="app_id" type="text" autocomplete="off" spellcheck="false" value="{{.Mail.M.AppID}}">
+        <label for="app_secret">{{t "f_app_secret"}}</label>
+        <input id="app_secret" name="app_secret" type="password" autocomplete="off"{{if .Mail.SecretHint}} placeholder="{{.Mail.SecretHint}}"{{end}}>
+        {{if .Mail.SecretHint}}<p class="note">{{t "secret_saved" .Mail.SecretHint}}</p>{{end}}
+      </div>
+      <div class="fields" id="smtp-fields"{{if ne .Mail.M.Type "smtp"}} hidden{{end}}>
+        <label for="host">{{t "f_host"}}</label>
+        <input id="host" name="host" type="text" autocomplete="off" spellcheck="false" value="{{.Mail.M.Host}}">
+        <label for="port">{{t "f_port"}}</label>
+        <input id="port" name="port" type="number" inputmode="numeric" value="{{if .Mail.M.Port}}{{.Mail.M.Port}}{{else}}587{{end}}">
+        <label for="user">{{t "f_user"}}</label>
+        <input id="user" name="user" type="text" autocomplete="off" spellcheck="false" value="{{.Mail.M.User}}">
+        <label for="password">{{t "f_password"}}</label>
+        <input id="password" name="password" type="password" autocomplete="off"{{if .Mail.PassHint}} placeholder="{{.Mail.PassHint}}"{{end}}>
+        {{if .Mail.PassHint}}<p class="note">{{t "secret_saved" .Mail.PassHint}}</p>{{end}}
+      </div>
+      <div class="fields" id="sender-field"{{if eq .Mail.M.Type "practice"}} hidden{{end}}>
+        <label for="sender">{{t "f_sender"}}</label>
+        <input id="sender" name="sender" type="email" autocomplete="off" spellcheck="false" value="{{.Mail.M.Sender}}">
+      </div>
+      <div class="choices">
+        <button type="submit">{{t "save"}}</button>
+        <button type="submit" class="secondary" formaction="/settings/mail/test">{{t "mail_test"}}</button>
+      </div>
+      </fieldset>
+    </form>
+  </section>
 </main>
 <footer>{{t "version"}}: {{.Version}}</footer>
 <script src="/static/settings.js"></script>
+<script src="/static/push.js"></script>
 </body>
 </html>

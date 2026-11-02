@@ -25,6 +25,7 @@
       <div class="finding-head">
         <span class="sit-name">{{.Situation.Name}}</span>
         {{if eq .Situation.Action "alert"}}<span class="chip alert-chip">{{t "chip_alert"}}</span>{{end}}
+        {{if .ChildHelp}}<span class="chip help-chip">{{t "help_label"}}</span>{{end}}
       </div>
       {{template "body" .}}
       <div class="choices">
@@ -56,5 +57,6 @@
 {{define "body"}}
       <p class="chat-meta">{{t "fin_in_chat" (or .ChatName .Chat)}} · {{when .Updated}}</p>
       <p class="reason">{{.Reason}}</p>
+      {{if .ChildMessage}}<p class="child-message"><strong>{{t "child_message_label"}}</strong> {{.ChildMessage}}</p>{{end}}
       {{range .Quotes}}<blockquote><span class="who">{{if .FromMe}}{{t "child"}}{{else}}{{.SenderName}}{{end}}</span> {{.Text}}</blockquote>{{end}}
 {{end}}

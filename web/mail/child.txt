@@ -1,0 +1,13 @@
+Guardian
+
+{{.L.T "child_intro"}}
+
+{{.F.Situation.Name}}
+{{.L.T "fin_in_chat" .F.ChatLabel}}
+{{.F.Reason}}
+
+{{.L.T "child_button_hint"}}
+{{.L.T "child_button"}}: {{.Link}}
+
+{{range .Contacts}}{{.}}
+{{end}}

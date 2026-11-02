@@ -24,7 +24,12 @@ type overviewAnalysis struct {
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	var o overviewAnalysis
 	o.OpenCount, _ = a.store.OpenFindingCount(ctx)
-	if sit, name, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
+	if sit, name, chat, ok, _ := a.store.UnseenHelp(ctx); ok {
+		if name == "" {
+			name = chat
+		}
+		o.Alert = a.lang.T("help_banner", sit, name)
+	} else if sit, name, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
 		if name == "" {
 			name = chat
 		}
@@ -63,6 +68,9 @@ type settingsData struct {
 	Forgot      bool // the key was forgotten because type or host changed
 	NoKey       bool // saved a type that needs a key, without one
 	TypedKey    bool // Vyzkoušet used a typed key that was not saved
+	Mail        mailView
+	MailResult  string
+	MailOK      bool
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +108,8 @@ func keyHint(k string) string {
 // renderSettings shows the form with d.S in it (saved or as typed).
 func (a *App) renderSettings(w http.ResponseWriter, r *http.Request, d settingsData) {
 	d.Lang, d.Version = a.lang.code, a.version
+	d.Mail = a.mailView(r.Context(), r)
+	d.Mail.Result, d.Mail.ResultOK = d.MailResult, d.MailOK
 	if a.an == nil {
 		// Previews show the form as saved, locked: nothing is analysed there.
 		d.S = previewSettings(r.Context(), a.store)
@@ -276,6 +286,10 @@ func situationFromForm(r *http.Request) (Situation, bool) {
 		Sensitivity: f.Get("sensitivity"),
 		Action:      f.Get("action"),
 		Enabled:     f.Get("enabled") == "1",
+		Recipients:  f.Get("recipients"),
+	}
+	if x.Recipients != "parents" && x.Recipients != "child" {
+		x.Recipients = "both"
 	}
 	ok := x.Name != "" && x.Description != "" && utf8.RuneCountInString(x.Name) <= 80 &&
 		utf8.RuneCountInString(x.Description) <= 1000 && sensitivities[x.Sensitivity] && actions[x.Action]
@@ -368,8 +382,9 @@ func (a *App) findingsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.render(w, a.pages["findings"], http.StatusOK, findingsData{Lang: a.lang.code, Version: a.version, Findings: fs})
-	// Opening the page counts as opening the findings (criterion 18).
+	// Opening the page counts as opening the findings (criteria 18, 26).
 	_ = a.store.MarkFindingsSeen(r.Context())
+	_ = a.store.MarkHelpSeen(r.Context())
 }
 
 func (a *App) markFinding(w http.ResponseWriter, r *http.Request) {

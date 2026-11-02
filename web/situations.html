@@ -66,5 +66,9 @@
           <select id="act-{{.ID}}" name="action">
             {{$a := .Action}}{{range $v := list "record" "digest" "alert"}}<option value="{{$v}}"{{if eq $a $v}} selected{{end}}>{{t (printf "act_%s" $v)}}</option>{{end}}
           </select>
+          <label for="who-{{.ID}}">{{t "f_who"}}</label>
+          <select id="who-{{.ID}}" name="recipients">
+            {{$w := .Recipients}}{{range $v := list "parents" "child" "both"}}<option value="{{$v}}"{{if eq $w $v}} selected{{end}}>{{t (printf "who_%s" $v)}}</option>{{end}}
+          </select>
           <label class="check switch"><input type="checkbox" role="switch" name="enabled" value="1"{{if .Enabled}} checked{{end}}> {{t "f_enabled"}}</label>
 {{end}}

@@ -50,6 +50,7 @@ type analyzer struct {
 	zone       *time.Location
 	secretsDir string
 	practice   *practiceModel // non-nil only in practice mode
+	notify     func(ctx context.Context, findingID int64, isNew bool)
 
 	run sync.Mutex // one look at a time
 
@@ -286,8 +287,12 @@ func (z *analyzer) lookAt(ctx context.Context, a analyst, m modelSettings, chat 
 			for _, q := range f.Quotes {
 				quotes = append(quotes, Quote{SenderName: q.SenderName, FromMe: q.FromMe, At: q.At, Text: q.Text})
 			}
-			if err := z.st.RecordFinding(ctx, chat, f.SituationID, f.Reason, quotes, time.Now()); err != nil {
+			id, isNew, err := z.st.RecordFinding(ctx, chat, f.SituationID, f.Reason, quotes, time.Now())
+			if err != nil {
 				return err
+			}
+			if z.notify != nil {
+				z.notify(ctx, id, isNew)
 			}
 		}
 		if err := z.st.MarkAnalyzed(ctx, chat, batch[len(batch)-1].Seq); err != nil {

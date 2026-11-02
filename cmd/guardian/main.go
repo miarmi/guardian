@@ -35,6 +35,7 @@ func main() {
 		Version:  os.Getenv("APP_VERSION"),
 		TimeZone: envOr("TZ", "UTC"),
 		Language: envOr("GUARDIAN_LANG", "en"),
+		BaseURL:  envOr("BASE_URL", "http://127.0.0.1:"+port),
 	})
 	if err != nil {
 		log.Fatal(err)

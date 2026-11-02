@@ -60,6 +60,10 @@ the child's phone under *Linked devices*.
   demos: `POST /dev/whatsapp/scan`, `/next`, `/message`, `/remove`,
   `/unreachable` and `GET /dev/whatsapp/messages` play the child's phone.
   These addresses exist only in this mode.
+- `BASE_URL` is Guardian's own public address (for links in e-mails and
+  notifications). The child's help links live under `/kid/`: if Guardian
+  sits behind a login, let `/kid/` through it; those requests are checked
+  with signed, expiring links.
 - `GUARDIAN_LANG=cs` for Czech pages; English is the default. Adding a
   language is one table in `i18n.go`.
 - The pages have **no login of their own**. Run Guardian behind a reverse

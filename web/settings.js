@@ -2,6 +2,14 @@
 // defaults, says at once where the messages would go, and warns when the
 // saved key no longer fits the type or address.
 (function () {
+  var mailType = document.getElementById("mail_type");
+  if (mailType) {
+    mailType.addEventListener("change", function () {
+      document.getElementById("graph-fields").hidden = mailType.value !== "graph";
+      document.getElementById("smtp-fields").hidden = mailType.value !== "smtp";
+      document.getElementById("sender-field").hidden = mailType.value === "practice";
+    });
+  }
   var form = document.getElementById("settings-form");
   if (!form) return;
   var d = form.dataset;
