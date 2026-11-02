@@ -670,3 +670,13 @@ func (l *lang) date(t time.Time) string {
 	}
 	return t.Format("2 Jan 2006")
 }
+
+// stamp writes a weekday, date and time that stay right whenever they are
+// read, as in a weekly digest: "ne 2. 11. 23:33", "Sun 2 Nov 23:33".
+func (l *lang) stamp(t time.Time) string {
+	if l.code == "cs" {
+		days := [...]string{"ne", "po", "út", "st", "čt", "pá", "so"}
+		return fmt.Sprintf("%s %d. %d. %s", days[t.Weekday()], t.Day(), int(t.Month()), t.Format("15:04"))
+	}
+	return t.Format("Mon 2 Jan 15:04")
+}

@@ -100,22 +100,15 @@ type overviewAnalysis struct {
 	State       analysisState
 	Destination string // host the text goes to, "" when it stays home
 	OpenCount   int
-	Alert       string // banner text, "" when none
-	AlertMore   string // "+1 další" when more is waiting
-	AlertChild  bool   // the banner is the child asking for help (shown in honey, not red)
-	Reason      string // why there is no model, when it is just the key
-	MailFailed  string // why the child's e-mail didn't go out (criterion 25)
+	Banners     []banner // what waits for the parents, the child's request first
+	Reason      string   // why there is no model, when it is just the key
+	MailFailed  string   // why the child's e-mail didn't go out (criterion 25)
 }
 
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	o := overviewAnalysis{MailFailed: a.nt.childMailError(ctx)}
 	o.OpenCount, _ = a.store.OpenFindingCount(ctx)
-	if alerts, child := a.banners(ctx); len(alerts) > 0 {
-		o.Alert, o.AlertChild = alerts[0], child
-		if len(alerts) > 1 {
-			o.AlertMore = a.lang.T("banner_more", len(alerts)-1)
-		}
-	}
+	o.Banners = a.banners(ctx)
 	if a.an == nil {
 		o.State = analysisState{NoModel: true}
 		return o
@@ -131,18 +124,33 @@ func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	return o
 }
 
-// banners lists what waits for the parents, the child's requests first;
-// child says whether the first one is the child's.
-func (a *App) banners(ctx context.Context) (out []string, child bool) {
+// banner is one notice at the top of the overview. The child's requests
+// (honey) and a new serious finding (red) each get their own, so neither
+// hides the other.
+type banner struct {
+	Text  string
+	More  string // "+1 další" when another of the same kind waits
+	Child bool
+}
+
+func (a *App) banners(ctx context.Context) []banner {
+	var out []banner
+	var child []string
 	if sit, chat, ok, _ := a.store.UnseenHelp(ctx); ok {
-		out = append(out, a.lang.T("help_banner", sit, chat))
+		child = append(child, a.lang.T("help_banner", sit, chat))
 	}
 	if ok, _ := a.store.UnseenHelpRequest(ctx); ok {
-		out = append(out, a.lang.T("help_request"))
+		child = append(child, a.lang.T("help_request"))
 	}
-	child = len(out) > 0
+	if len(child) > 0 {
+		b := banner{Text: child[0], Child: true}
+		if len(child) > 1 {
+			b.More = a.lang.T("banner_more", len(child)-1)
+		}
+		out = append(out, b)
+	}
 	if sit, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
-		out = append(out, a.lang.T("alert_banner", sit, chat))
+		out = append(out, banner{Text: a.lang.T("alert_banner", sit, chat)})
 	}
-	return out, child
+	return out
 }

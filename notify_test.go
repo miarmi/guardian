@@ -421,3 +421,26 @@ func TestLinkify(t *testing.T) {
 		t.Fatalf("got %s", got)
 	}
 }
+
+func TestChildAndSeriousBannersBothShow(t *testing.T) {
+	a, do := practiceApp(t)
+	a.nt.baseURL = "https://guardian.example"
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
+	do("POST", "/settings/helplink", nil)
+	link := strings.TrimPrefix(childMails(t, do)[0].Links[0], "https://guardian.example")
+	do("POST", link, url.Values{"message": {"pomoc"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"v"}, "chat_name": {"V"}, "text": {"[Výhrůžky násilím]"}})
+	do("POST", "/dev/analysis/run", nil)
+	page := do("GET", "/", nil).Body.String()
+	if !strings.Contains(page, `class="banner child"`) || !strings.Contains(page, "Nový vážný nález: Výhrůžky násilím v chatu V") {
+		t.Fatal("both banners should show")
+	}
+}
+
+func TestStampNamesTheDay(t *testing.T) {
+	z, _ := time.LoadLocation("Europe/Prague")
+	if got := pick("cs").stamp(time.Date(2026, 11, 1, 23, 33, 0, 0, z)); got != "ne 1. 11. 23:33" {
+		t.Fatalf("got %q", got)
+	}
+}

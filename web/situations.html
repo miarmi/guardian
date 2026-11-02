@@ -33,7 +33,7 @@
           {{template "fields" .}}
           <div class="choices">
             <button type="submit">{{t "save"}}</button>
-            {{if not .Builtin}}<button type="submit" name="delete" value="1" class="secondary" formnovalidate>{{t "sit_delete"}}</button>{{end}}
+            {{if not .Builtin}}<button type="submit" name="delete" value="1" class="danger" formnovalidate>{{t "sit_delete"}}</button>{{end}}
           </div>
         </form>
       </details>
