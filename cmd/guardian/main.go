@@ -30,6 +30,7 @@ func main() {
 	app, err := guardian.New(context.Background(), guardian.Config{
 		DataDir:  dataDir,
 		Connect:  os.Getenv("GUARDIAN_CONNECT") == "1",
+		Practice: os.Getenv("GUARDIAN_PRACTICE") == "1",
 		Env:      os.Getenv("APP_ENV"),
 		Version:  os.Getenv("APP_VERSION"),
 		TimeZone: envOr("TZ", "UTC"),

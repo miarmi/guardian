@@ -56,6 +56,10 @@ the child's phone under *Linked devices*.
   of them out.
 - `GUARDIAN_CONNECT=1` allows the connector to run. Leave it unset for a test
   copy.
+- `GUARDIAN_PRACTICE=1` runs a pretend WhatsApp instead, for tests and
+  demos: `POST /dev/whatsapp/scan`, `/next`, `/message`, `/remove`,
+  `/unreachable` and `GET /dev/whatsapp/messages` play the child's phone.
+  These addresses exist only in this mode.
 - `GUARDIAN_LANG=cs` for Czech pages; English is the default. Adding a
   language is one table in `i18n.go`.
 - The pages have **no login of their own**. Run Guardian behind a reverse

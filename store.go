@@ -145,3 +145,24 @@ func (s *store) SetSetting(ctx context.Context, key, value string) error {
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
 }
+
+// Messages returns what was kept for one chat, oldest first.
+func (s *store) Messages(ctx context.Context, chat string) ([]Message, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, chat, sender, sender_name, from_me, at, kind, text
+		FROM messages WHERE chat = ? ORDER BY at, rowid`, chat)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Message
+	for rows.Next() {
+		var m Message
+		var at int64
+		if err := rows.Scan(&m.ID, &m.Chat, &m.Sender, &m.SenderName, &m.FromMe, &at, &m.Kind, &m.Text); err != nil {
+			return nil, err
+		}
+		m.At = time.Unix(at, 0)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}

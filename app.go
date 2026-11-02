@@ -33,6 +33,10 @@ type Config struct {
 	// Connect allows the WhatsApp connector to run. Leave it false for
 	// previews, tests and other copies of the app.
 	Connect bool
+	// Practice runs a pretend WhatsApp instead of the real one, driven
+	// through /dev/whatsapp/* addresses, so tests can play the child's phone.
+	// Never set it together with Connect, and never where real people look.
+	Practice bool
 	// Env names the environment for the page: "prod", a preview name, or "".
 	Env string
 	// Version is shown in the footer (a commit, say).
@@ -47,7 +51,8 @@ type Config struct {
 // the pages that show them.
 type App struct {
 	store    *store
-	wa       *whatsapp // nil when Config.Connect is false
+	wa       connector // nil when neither Connect nor Practice is set
+	dev      *practice // non-nil only in practice mode
 	preview  string
 	version  string
 	index    *template.Template
@@ -72,15 +77,25 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("guardian: opening database: %w", err)
 	}
-	var wa *whatsapp
-	if cfg.Connect {
-		wa, err = newWhatsApp(ctx, cfg.SecretsDir, st)
+	if cfg.Connect && cfg.Practice {
+		st.Close()
+		return nil, errors.New("guardian: Connect and Practice exclude each other")
+	}
+	switch {
+	case cfg.Connect:
+		wa, err := newWhatsApp(ctx, cfg.SecretsDir, st)
 		if err != nil {
 			st.Close()
 			return nil, fmt.Errorf("guardian: whatsapp: %w", err)
 		}
+		return newApp(st, wa, cfg), nil
+	case cfg.Practice:
+		p := newPractice(st)
+		a := newApp(st, p, cfg)
+		a.dev = p
+		return a, nil
 	}
-	return newApp(st, wa, cfg), nil
+	return newApp(st, nil, cfg), nil
 }
 
 // Close stops the connector and closes the database.
@@ -91,7 +106,7 @@ func (a *App) Close() error {
 	return a.store.Close()
 }
 
-func newApp(st *store, wa *whatsapp, cfg Config) *App {
+func newApp(st *store, wa connector, cfg Config) *App {
 	preview := ""
 	if cfg.Env != "" && cfg.Env != "prod" {
 		preview = cfg.Env
@@ -153,8 +168,19 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /static/style.css", a.static)
 	mux.Handle("GET /static/connect.js", a.static)
 	mux.HandleFunc("GET /whatsapp/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusSeeOther) })
+	if a.dev != nil {
+		a.dev.routes(mux)
+	}
 	mux.HandleFunc("/", a.notFound)
 	return logRequests(securityHeaders(http.NewCrossOriginProtection().Handler(mux)))
+}
+
+// connector is what the pages need from a WhatsApp connection, real or practice.
+type connector interface {
+	Status() waStatus
+	StartPairing(ctx context.Context) error
+	Disconnect(ctx context.Context) error
+	Close()
 }
 
 // connectorView is the WhatsApp row of the "Connectors" list.

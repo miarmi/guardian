@@ -2,8 +2,11 @@ package guardian
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -177,5 +180,72 @@ func TestCzechPage(t *testing.T) {
 	a.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nope", nil))
 	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "Taková stránka tu není.") {
 		t.Errorf("404 page: %d", rec.Code)
+	}
+}
+
+func TestPracticePlaysThePhone(t *testing.T) {
+	st := testStore(t)
+	p := newPractice(st)
+	a := newApp(st, p, Config{Language: "cs"})
+	a.dev = p
+	h := a.Handler()
+	do := func(method, path string, form url.Values) *httptest.ResponseRecorder {
+		var body io.Reader
+		if form != nil {
+			body = strings.NewReader(form.Encode())
+		}
+		req := httptest.NewRequest(method, path, body)
+		if form != nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := do("POST", "/dev/whatsapp/scan", nil); rec.Code != http.StatusConflict {
+		t.Fatalf("scan with no code: %d", rec.Code)
+	}
+	do("POST", "/whatsapp/connect", url.Values{})
+	if rec := do("POST", "/dev/whatsapp/scan", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("scan: %d", rec.Code)
+	}
+	if !strings.Contains(do("GET", "/", nil).Body.String(), "Připojeno jako &#43;420 777 000 111") {
+		t.Fatal("not shown as connected")
+	}
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"c1"}, "chat_name": {"6.B"}, "group": {"1"}, "sender_name": {"Kuba"}, "kind": {"image"}, "text": {"lol"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"c1"}, "chat_name": {"6.B"}, "group": {"1"}, "sender_name": {"Kuba"}, "kind": {"audio"}, "text": {"ignored"}})
+	var kept []map[string]any
+	json.Unmarshal(do("GET", "/dev/whatsapp/messages?chat=c1", nil).Body.Bytes(), &kept)
+	if len(kept) != 2 || kept[0]["kind"] != "image" || kept[0]["text"] != "lol" || kept[1]["text"] != "" {
+		t.Fatalf("kept: %v", kept)
+	}
+	page := do("GET", "/", nil).Body.String()
+	if !strings.Contains(page, "6.B") || !strings.Contains(page, "2 zprávy") || strings.Contains(page, "lol") {
+		t.Fatal("chat list wrong or shows content")
+	}
+	do("POST", "/dev/whatsapp/remove", nil)
+	if !strings.Contains(do("GET", "/", nil).Body.String(), "Odpojeno telefonem") {
+		t.Fatal("removal not shown")
+	}
+	// Three codes, then it expires.
+	do("POST", "/whatsapp/connect", url.Values{})
+	for i := 0; i < 3; i++ {
+		do("POST", "/dev/whatsapp/next", nil)
+	}
+	if p.Status().State != waNotConnected {
+		t.Fatal("code did not expire after the third")
+	}
+	do("POST", "/dev/whatsapp/unreachable", url.Values{"on": {"1"}})
+	if rec := do("POST", "/whatsapp/connect", url.Values{}); !strings.Contains(rec.Header().Get("Location"), "error=unreachable") {
+		t.Fatalf("unreachable: %v", rec.Header())
+	}
+}
+
+func TestNoDevAddressesOutsidePractice(t *testing.T) {
+	a := newApp(testStore(t), nil, Config{Env: "p"})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/dev/whatsapp/scan", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("got %d", rec.Code)
 	}
 }
