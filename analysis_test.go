@@ -360,3 +360,12 @@ func TestNewDefaultSetReplacesTheOld(t *testing.T) {
 	}
 	_ = added
 }
+
+func TestPreviewGetsTheDefaultSet(t *testing.T) {
+	st := testStore(t)
+	newApp(st, nil, Config{Env: "p"})
+	sits, _ := st.Situations(context.Background())
+	if len(sits) != len(defaultSituationsEN) {
+		t.Fatalf("a preview has %d situations, want the %d defaults", len(sits), len(defaultSituationsEN))
+	}
+}

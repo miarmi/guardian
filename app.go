@@ -154,9 +154,10 @@ func newApp(st *store, wa connector, cfg Config) *App {
 		if cfg.Practice {
 			a.an.practice = &practiceModel{reason: l.T("practice_reason"), errText: l.T("practice_unreachable")}
 		}
-		if err := st.SeedSituations(context.Background(), l.situations); err != nil {
-			log.Printf("situations: %v", err)
-		}
+	}
+	// Previews too, so a preview shows the default set production will get.
+	if err := st.SeedSituations(context.Background(), l.situations); err != nil {
+		log.Printf("situations: %v", err)
 	}
 	return a
 }
