@@ -44,6 +44,7 @@
       <input id="model" name="model" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" value="{{.S.Model}}" placeholder="{{t "ph_model"}}">
       <label for="key">{{t "f_key"}}</label>
       <input id="key" name="key" type="password" autocomplete="off" value=""{{if .KeyHint}} placeholder="{{.KeyHint}}"{{end}}>
+      {{if .TypedKey}}<p class="note caution-text">{{t "key_retype"}}</p>{{end}}
       <p class="note" id="key-note">{{if .KeyHint}}{{t "key_saved" .KeyHint}}{{else}}{{t "key_none"}}{{end}}</p>
     </div>
 

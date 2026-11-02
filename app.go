@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -275,17 +276,30 @@ func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
 	for _, c := range chats {
 		seen[c.Name]++
 	}
-	nth := map[string]int{}
+	// Number same-name chats by when they first appeared, so a label never
+	// moves to another chat.
+	order := map[string][]int64{}
+	for _, c := range chats {
+		if c.Name != "" && seen[c.Name] > 1 {
+			order[c.Name] = append(order[c.Name], c.First)
+		}
+	}
+	for _, firsts := range order {
+		sort.Slice(firsts, func(i, j int) bool { return firsts[i] < firsts[j] })
+	}
 	for i, c := range chats {
 		if c.Name == "" || seen[c.Name] < 2 {
 			continue
 		}
-		nth[c.Name]++
 		user, _, _ := strings.Cut(c.JID, "@")
 		if !c.IsGroup && len(user) > 3 && strings.Trim(user, "0123456789") == "" {
 			chats[i].Suffix = "…" + user[len(user)-3:]
-		} else {
-			chats[i].Suffix = "(" + strconv.Itoa(nth[c.Name]) + ")"
+			continue
+		}
+		for n, f := range order[c.Name] {
+			if f == c.First {
+				chats[i].Suffix = "(" + strconv.Itoa(n+1) + ")"
+			}
 		}
 	}
 	a.render(w, a.index, http.StatusOK, indexData{

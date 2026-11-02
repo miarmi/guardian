@@ -164,3 +164,4 @@ details[open] > summary::after { transform: rotate(90deg); }
 blockquote { margin: 0.4rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--border); background: var(--bg); border-radius: 0.4rem; overflow-wrap: anywhere; }
 blockquote .who { display: block; font-size: 0.85rem; font-weight: 600; color: var(--muted); }
 .findings .choices form { margin: 0; }
+.caution-text { color: var(--caution); }

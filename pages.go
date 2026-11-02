@@ -62,6 +62,7 @@ type settingsData struct {
 	Saved       bool
 	Forgot      bool // the key was forgotten because type or host changed
 	NoKey       bool // saved a type that needs a key, without one
+	TypedKey    bool // Vyzkoušet used a typed key that was not saved
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -213,8 +214,8 @@ func (a *App) testModel(w http.ResponseWriter, r *http.Request) {
 	if m.Type == saved.Type && m.Address == saved.Address && m.Model == saved.Model && m.Key == saved.Key {
 		a.an.noteTest(err)
 	}
-	if m.Key != "" && m.Key != saved.Key {
-		d.KeyHint = "" // a typed key is not echoed back; it has to be typed again to save it
+	if k := strings.TrimSpace(r.PostForm.Get("key")); k != "" {
+		d.TypedKey = true // a typed key is never echoed back; it must be typed again to save it
 	}
 	a.renderSettings(w, r, d)
 }

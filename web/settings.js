@@ -53,8 +53,8 @@
   form.addEventListener("input", function () { dirty = true; update(); });
   type.addEventListener("change", function () {
     if (type.value === "anthropic") {
-      if (!address.value) address.value = d.anthropicAddress;
-      if (!model.value) model.value = d.anthropicModel;
+      address.value = d.anthropicAddress;
+      model.value = d.anthropicModel;
     } else if (type.value === "openai") {
       if (address.value === d.anthropicAddress) address.value = "";
       if (model.value === d.anthropicModel) model.value = "";

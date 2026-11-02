@@ -28,6 +28,7 @@ type ChatSummary struct {
 	JID     string
 	Name    string
 	Suffix  string // set when another chat has the same name
+	First   int64  // when the chat first appeared, for stable numbering
 	IsGroup bool
 	Count   int
 	Last    time.Time
@@ -145,7 +146,7 @@ func (s *store) ChatName(ctx context.Context, jid string) (string, error) {
 // Chats lists every chat with messages, newest activity first.
 func (s *store) Chats(ctx context.Context) ([]ChatSummary, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT m.chat, COALESCE(c.name, ''), COALESCE(c.is_group, 0),
-			COUNT(*), MAX(m.at)
+			COUNT(*), MAX(m.at), MIN(m.rowid)
 		FROM messages m LEFT JOIN chats c ON c.jid = m.chat
 		GROUP BY m.chat ORDER BY MAX(m.at) DESC LIMIT 500`)
 	if err != nil {
@@ -156,7 +157,7 @@ func (s *store) Chats(ctx context.Context) ([]ChatSummary, error) {
 	for rows.Next() {
 		var c ChatSummary
 		var last int64
-		if err := rows.Scan(&c.JID, &c.Name, &c.IsGroup, &c.Count, &last); err != nil {
+		if err := rows.Scan(&c.JID, &c.Name, &c.IsGroup, &c.Count, &last, &c.First); err != nil {
 			return nil, err
 		}
 		c.Last = time.Unix(last, 0)
