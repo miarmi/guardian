@@ -471,20 +471,54 @@ func (n *notifier) onFinding(ctx context.Context, id int64, isNew bool) {
 		})
 	}
 	if f.Situation.tellsChild() {
-		if err := n.mailChild(ctx, f); err != nil {
-			log.Printf("mail to the child: %v", err)
-		}
+		n.tryChildMail(ctx, f)
 	}
+}
+
+// tryChildMail sends the child's e-mail; a failure is kept, shown on the
+// overview and retried at the next hourly look (criterion 25).
+func (n *notifier) tryChildMail(ctx context.Context, f Finding) {
+	err := n.mailChild(ctx, f)
+	if err != nil {
+		log.Printf("mail to the child: %v", err)
+		n.st.SetChildMailPending(ctx, f.ID, true)
+		n.st.SetSetting(ctx, "mail_child_error", n.lang.explain(err))
+		return
+	}
+	n.st.SetChildMailPending(ctx, f.ID, false)
+}
+
+// retryChildMails tries the failed e-mails to the child again.
+func (n *notifier) retryChildMails(ctx context.Context) {
+	ids, err := n.st.PendingChildMails(ctx)
+	if err != nil {
+		return
+	}
+	for _, id := range ids {
+		f, ok, err := n.st.Finding(ctx, id)
+		if err != nil || !ok {
+			n.st.SetChildMailPending(ctx, id, false)
+			continue
+		}
+		n.tryChildMail(ctx, f)
+	}
+	if ids, _ := n.st.PendingChildMails(ctx); len(ids) == 0 {
+		n.st.SetSetting(ctx, "mail_child_error", "")
+	}
+}
+
+// childMailError is why the child's e-mail last failed, "" when all went out.
+func (n *notifier) childMailError(ctx context.Context) string {
+	v, _ := n.st.Setting(ctx, "mail_child_error")
+	return v
 }
 
 // onHelp tells the parents the child asked for help (criterion 26).
 func (n *notifier) onHelp(ctx context.Context, f Finding) {
-	n.pushParents(ctx, pushMessage{
-		Title: "Guardian",
-		Body:  n.lang.T("help_banner", f.Situation.Name, f.ChatLabel()),
-		URL:   n.link("/findings"),
-	})
+	n.pushParents(ctx, pushMessage{Title: "Guardian", Body: n.lang.T("help_banner", f.Situation.Name, f.ChatLabel()), URL: n.link("/findings")})
 }
+
+var errNoChildEmail = errors.New("no child e-mail")
 
 func (n *notifier) mailChild(ctx context.Context, f Finding) error {
 	m := n.mailSettings(ctx)
@@ -496,7 +530,7 @@ func (n *notifier) mailChild(ctx context.Context, f Finding) error {
 		return err
 	}
 	link := n.link("/kid/" + token)
-	data := map[string]any{"F": f, "Link": link, "Contacts": n.lang.contacts}
+	data := map[string]any{"F": f, "Link": link, "Contacts": n.lang.contacts, "ParentsKnow": f.Situation.tellsParents()}
 	var html, text bytes.Buffer
 	if err := mailTmpl.ExecuteTemplate(&html, "child.html", n.view(data)); err != nil {
 		return err
@@ -504,13 +538,22 @@ func (n *notifier) mailChild(ctx context.Context, f Finding) error {
 	if err := mailTmpl.ExecuteTemplate(&text, "child.txt", n.view(data)); err != nil {
 		return err
 	}
-	return n.send(ctx, email{To: []string{m.ChildEmail}, Subject: n.lang.T("child_subject"), HTML: html.String(), Text: text.String(), Links: []string{link}})
+	err = n.send(ctx, email{To: []string{m.ChildEmail}, Subject: n.lang.T("child_subject"), HTML: html.String(), Text: text.String(), Links: []string{link}})
+	if errors.Is(err, errNoChildEmail) {
+		return nil
+	}
+	return err
 }
 
 // view hands mail templates the words of the page language.
 func (n *notifier) view(data map[string]any) map[string]any {
 	data["L"] = n.lang
 	return data
+}
+
+// testPush sends a test notification to every device.
+func (n *notifier) testPush(ctx context.Context) {
+	n.pushParents(ctx, pushMessage{Title: "Guardian", Body: n.lang.T("push_test"), URL: n.link("/settings")})
 }
 
 // --- weekly digest (criterion 28) ---

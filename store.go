@@ -104,6 +104,8 @@ func openStore(path string) (*store, error) {
 		`ALTER TABLE findings ADD COLUMN child_help INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE findings ADD COLUMN child_message TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE findings ADD COLUMN help_seen INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE findings ADD COLUMN child_mail_pending INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE findings ADD COLUMN help_at INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
@@ -260,6 +262,7 @@ type Finding struct {
 	// The child pressed "Ano, ať to řeší rodiče" (criterion 26).
 	ChildHelp    bool
 	ChildMessage string
+	HelpAt       time.Time
 }
 
 // ChatLabel is the chat's name, or its id when it has none.
@@ -455,7 +458,7 @@ func (s *store) FindingsSince(ctx context.Context, since time.Time) ([]Finding, 
 
 func (s *store) findingsWhere(ctx context.Context, where, order string, args ...any) ([]Finding, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT f.id, f.chat, COALESCE(c.name, ''), f.created_at, f.updated_at,
-			f.reason, f.quotes, f.status, f.seen, f.child_help, f.child_message, `+prefixed("s.", situationCols)+`
+			f.reason, f.quotes, f.status, f.seen, f.child_help, f.child_message, f.help_at, `+prefixed("s.", situationCols)+`
 		FROM findings f JOIN situations s ON s.id = f.situation_id LEFT JOIN chats c ON c.jid = f.chat
 		WHERE `+where+` `+order, args...)
 	if err != nil {
@@ -465,15 +468,18 @@ func (s *store) findingsWhere(ctx context.Context, where, order string, args ...
 	var out []Finding
 	for rows.Next() {
 		var f Finding
-		var created, updated int64
+		var created, updated, helpAt int64
 		var quotes string
 		x := &f.Situation
 		if err := rows.Scan(&f.ID, &f.Chat, &f.ChatName, &created, &updated, &f.Reason, &quotes, &f.Status, &f.Seen,
-			&f.ChildHelp, &f.ChildMessage,
+			&f.ChildHelp, &f.ChildMessage, &helpAt,
 			&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin, &x.Recipients); err != nil {
 			return nil, err
 		}
 		f.Created, f.Updated = time.Unix(created, 0), time.Unix(updated, 0)
+		if helpAt > 0 {
+			f.HelpAt = time.Unix(helpAt, 0)
+		}
 		_ = json.Unmarshal([]byte(quotes), &f.Quotes)
 		out = append(out, f)
 	}
@@ -525,7 +531,8 @@ func (s *store) UnseenAlert(ctx context.Context) (situation, chatName, chat stri
 
 // AskForHelp records the child's request for help with a finding.
 func (s *store) AskForHelp(ctx context.Context, id int64, message string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE findings SET child_help = 1, child_message = ?, help_seen = 0 WHERE id = ?`, message, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE findings SET child_help = 1, child_message = ?, help_seen = 0, help_at = ? WHERE id = ?`,
+		message, time.Now().Unix(), id)
 	return err
 }
 
@@ -598,4 +605,29 @@ func (s *store) CountChats(ctx context.Context) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(DISTINCT chat) FROM messages").Scan(&n)
 	return n, err
+}
+
+// SetChildMailPending marks whether the child's e-mail about a finding still
+// has to go out (criterion 25).
+func (s *store) SetChildMailPending(ctx context.Context, id int64, pending bool) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_pending = ? WHERE id = ?", pending, id)
+	return err
+}
+
+// PendingChildMails lists findings whose e-mail to the child failed.
+func (s *store) PendingChildMails(ctx context.Context) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id FROM findings WHERE child_mail_pending = 1 ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

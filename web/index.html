@@ -60,6 +60,7 @@
       {{else}}<p class="status-line ok">{{t "an_running"}}{{if not .State.LastRun.IsZero}} {{t "last_run" (when .State.LastRun)}}{{end}}</p>{{end}}
       <p class="note">{{if .Destination}}{{t "goes_to" .Destination}}{{else}}{{t "stays_home"}}{{end}}</p>
     {{end}}
+    {{if .MailFailed}}<p class="status-line warn">{{t "mail_child_failed" .MailFailed}} <a href="/settings#mail">{{t "settings_arrow"}}</a></p>{{end}}
     {{end}}
   </section>
 

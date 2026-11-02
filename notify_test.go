@@ -241,3 +241,66 @@ func TestNoDevOutboxOutsidePractice(t *testing.T) {
 		}
 	}
 }
+
+func TestChildMailFailureIsShownAndRetried(t *testing.T) {
+	_, do := practiceApp(t)
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
+	do("POST", "/dev/mail/unreachable", url.Values{"on": {"1"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"f"}, "chat_name": {"F"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/analysis/run", nil)
+	if !strings.Contains(do("GET", "/", nil).Body.String(), "E-mail dítěti neodešel: zkušební pošta je nedostupná") {
+		t.Fatal("failure not on the overview")
+	}
+	do("POST", "/dev/mail/unreachable", url.Values{"on": {"0"}})
+	do("POST", "/dev/analysis/run", nil)
+	if strings.Contains(do("GET", "/", nil).Body.String(), "E-mail dítěti neodešel") {
+		t.Fatal("notice stays after the retry went out")
+	}
+	n := 0
+	for _, b := range outbox(t, do) {
+		if b.Kind == "email" && b.To == "dite@example.cz" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("child got %d e-mails, want 1", n)
+	}
+}
+
+func TestChildSeesResolvedAndBadAddressesAreSaid(t *testing.T) {
+	a, do := practiceApp(t)
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"r"}, "chat_name": {"R"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/analysis/run", nil)
+	var link string
+	for _, b := range outbox(t, do) {
+		if b.Kind == "email" {
+			link = strings.TrimPrefix(b.Links[0], a.nt.baseURL)
+		}
+	}
+	page := do("GET", link, nil).Body.String()
+	if !strings.Contains(page, `href="tel:116111"`) || !strings.Contains(page, `href="https://e-bezpeci.cz"`) || strings.Contains(page, "Rodiče to označili jako vyřešené.") {
+		t.Fatal("contacts not tappable, or resolved too early")
+	}
+	fs, _ := a.store.Findings(context.Background())
+	do("POST", "/findings/"+itoa(fs[0].ID)+"/resolved", nil)
+	if !strings.Contains(do("GET", link, nil).Body.String(), "Rodiče to označili jako vyřešené.") {
+		t.Fatal("resolved not shown to the child")
+	}
+	page = do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "parent_emails": {"mama@example.cz; tata"}}).Body.String()
+	if !strings.Contains(page, "„tata“ není platná e-mailová adresa.") || !strings.Contains(page, "mama@example.cz; tata") {
+		t.Fatal("bad address not said or form not kept")
+	}
+	if m := a.nt.mailSettings(context.Background()); m.ParentEmails != "mama@example.cz" {
+		t.Fatalf("saved despite the mistake: %q", m.ParentEmails)
+	}
+}
+
+func TestLinkify(t *testing.T) {
+	got := string(linkify("Když jde o bezpečí hned: 158 (policie) nebo 112 <b>"))
+	if !strings.Contains(got, `<a class="tel" href="tel:158">158</a>`) || !strings.Contains(got, `href="tel:112"`) || strings.Contains(got, "<b>") {
+		t.Fatalf("got %s", got)
+	}
+}

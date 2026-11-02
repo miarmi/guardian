@@ -22,6 +22,6 @@ func (m mailTemplates) ExecuteTemplate(w io.Writer, name string, data any) error
 }
 
 var mailTmpl = mailTemplates{
-	html: htmltemplate.Must(htmltemplate.ParseFS(webFS, "web/mail/*.html")),
+	html: htmltemplate.Must(htmltemplate.New("").Funcs(htmltemplate.FuncMap{"linkify": linkify}).ParseFS(webFS, "web/mail/*.html")),
 	text: texttemplate.Must(texttemplate.ParseFS(webFS, "web/mail/*.txt")),
 }

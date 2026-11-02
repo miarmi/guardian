@@ -2,6 +2,9 @@
 // defaults, says at once where the messages would go, and warns when the
 // saved key no longer fits the type or address.
 (function () {
+  // Bring a result into view after the page reloads (e.g. test e-mail).
+  var here = document.querySelector(".scroll-here");
+  if (here && here.scrollIntoView) here.scrollIntoView({ block: "center" });
   var mailType = document.getElementById("mail_type");
   if (mailType) {
     mailType.addEventListener("change", function () {

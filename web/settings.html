@@ -61,13 +61,20 @@
 
   <section id="notifications" aria-labelledby="notif-heading" class="settings-section">
     <h2 id="notif-heading">{{t "notif_title"}}</h2>
+    {{if .Mail.PushSent}}<p class="status-line ok scroll-here" role="status">{{t "push_sent"}}</p>{{end}}
+    <p class="note caution-text" id="push-home" hidden>{{t "notif_home_screen"}}</p>
     <button type="button" id="push-on"{{if not .Available}} disabled{{end}}
-      data-unsupported="{{t "notif_unsupported"}}" data-denied="{{t "notif_denied"}}" data-added="{{t "notif_added"}}">{{t "notif_on"}}</button>
+      data-unsupported="{{t "notif_unsupported"}}" data-denied="{{t "notif_denied"}}" data-added="{{t "notif_added"}}"
+      data-browser="{{t "dev_browser"}}">{{t "notif_on"}}</button>
+    <div id="push-here" hidden>
+      <p class="status-line ok">{{t "notif_on_here"}}</p>
+      <form method="post" action="/push/test"><button type="submit" class="secondary">{{t "push_test_button"}}</button></form>
+    </div>
     <p class="note" id="push-note" role="status" hidden></p>
     <h3>{{t "notif_devices"}}</h3>
     {{if .Mail.Devices}}
     <ul class="devices" aria-label="{{t "notif_devices"}}">
-      {{range .Mail.Devices}}<li><span>{{.Label}} · {{when .Created}}</span>
+      {{range .Mail.Devices}}<li data-endpoint="{{.Endpoint}}"><span>{{.Label}} · {{when .Created}} <span class="this-device" hidden>{{t "this_device"}}</span></span>
         <form method="post" action="/push/devices/{{.ID}}/delete"><button type="submit" class="secondary">{{t "notif_off"}}</button></form></li>
       {{end}}
     </ul>
@@ -77,13 +84,13 @@
   <section id="mail" aria-labelledby="mail-heading" class="settings-section">
     <h2 id="mail-heading">{{t "mail_title"}}</h2>
     {{if .Mail.Saved}}<p class="status-line ok transient" role="status">{{t "mail_saved"}}</p>{{end}}
-    {{if .Mail.Result}}<p class="status-line{{if .Mail.ResultOK}} ok{{else}} warn{{end}}" role="status">{{.Mail.Result}}</p>{{end}}
+    {{if .Mail.Result}}<p class="status-line scroll-here{{if .Mail.ResultOK}} ok{{else}} warn{{end}}" role="status">{{.Mail.Result}}</p>{{end}}
     <form method="post" action="/settings/mail" class="form" id="mail-form">
       <fieldset{{if not .Available}} disabled{{end}}>
       <label for="child_email">{{t "f_child_email"}}</label>
       <input id="child_email" name="child_email" type="email" inputmode="email" autocomplete="off" value="{{.Mail.M.ChildEmail}}">
       <label for="parent_emails">{{t "f_parent_emails"}}</label>
-      <input id="parent_emails" name="parent_emails" type="text" inputmode="email" autocomplete="off" value="{{.Mail.M.ParentEmails}}">
+      <textarea id="parent_emails" name="parent_emails" rows="2" inputmode="email" autocomplete="off" spellcheck="false">{{.Mail.M.ParentEmails}}</textarea>
       <p class="note">{{t "f_parent_hint"}}</p>
       <label for="mail_type">{{t "f_sending"}}</label>
       <select id="mail_type" name="mail_type">

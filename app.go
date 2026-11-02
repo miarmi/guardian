@@ -153,8 +153,9 @@ func newApp(st *store, wa connector, cfg Config) *App {
 		"list":  func(v ...string) []string { return v },
 		"clock": func(t time.Time) string { return t.In(zone).Format("15:04") },
 		"newSituation": func() Situation {
-			return Situation{Sensitivity: "medium", Action: "digest", Enabled: true}
+			return Situation{Sensitivity: "medium", Action: "digest", Enabled: true, Recipients: "both"}
 		},
+		"linkify": linkify,
 	}
 	a := &App{
 		store:    st,
@@ -179,7 +180,7 @@ func newApp(st *store, wa connector, cfg Config) *App {
 	}
 	a.nt = &notifier{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, baseURL: cfg.BaseURL, practice: cfg.Practice}
 	if wa != nil {
-		a.an = &analyzer{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, notify: a.nt.onFinding}
+		a.an = &analyzer{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, notify: a.nt.onFinding, afterLook: a.nt.retryChildMails}
 		if cfg.Practice {
 			a.an.practice = &practiceModel{reason: l.T("practice_reason"), errText: l.T("practice_unreachable")}
 		}
@@ -226,6 +227,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /push/key", a.pushKey)
 	mux.HandleFunc("POST /push/subscribe", a.pushSubscribe)
 	mux.HandleFunc("POST /push/devices/{id}/delete", a.pushRemove)
+	mux.HandleFunc("POST /push/test", a.pushTest)
 	mux.HandleFunc("POST /settings/mail", a.saveMail)
 	mux.HandleFunc("POST /settings/mail/test", a.testMailHandler)
 	if a.dev != nil {

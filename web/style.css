@@ -135,7 +135,7 @@ footer { max-width: 40rem; margin: 0 auto; padding: 0 1rem 1.5rem; color: var(--
 .form label { font-weight: 600; margin-top: 0.6rem; }
 .form label.check { display: flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; margin-top: 0.4rem; }
 .form label.check input { width: 1.4rem; height: 1.4rem; }
-.form input[type=text], .form input[type=url], .form input[type=password], .form input[type=number], .form select, .form textarea {
+.form input[type=text], .form input[type=url], .form input[type=password], .form input[type=number], .form input[type=email], .form select, .form textarea {
   font: inherit; width: 100%; min-width: 0; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 0.6rem; background: var(--card); color: var(--text);
 }
 .form textarea { resize: vertical; min-height: 7.5rem; field-sizing: content; }
@@ -177,3 +177,7 @@ blockquote .who { display: block; font-size: 0.85rem; font-weight: 600; color: v
 .contacts h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 .contacts ul { margin: 0; padding-left: 1.1rem; list-style: disc; display: block; }
 .contacts li { background: none; border: 0; padding: 0.15rem 0; border-radius: 0; }
+.contacts a.tel, .contacts a.site { display: inline-block; min-height: 2.75rem; line-height: 2.75rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.contacts li { line-height: 1.5; }
+.helpline { margin: 1.5rem 0 0; }
+.helpline .button { width: 100%; }

@@ -36,7 +36,7 @@
       <details>
         <summary>
           <span class="sit-name">{{.Situation.Name}}</span>
-          <span class="sit-meta">{{or .ChatName .Chat}} · {{if eq .Status "resolved"}}{{t "fin_marked_resolved"}}{{else}}{{t "fin_marked_false"}}{{end}}</span>
+          <span class="sit-meta">{{or .ChatName .Chat}} · {{if .ChildHelp}}{{t "help_label"}} · {{end}}{{if eq .Status "resolved"}}{{t "fin_marked_resolved"}}{{else}}{{t "fin_marked_false"}}{{end}}</span>
         </summary>
         {{template "body" .}}
         <div class="choices">

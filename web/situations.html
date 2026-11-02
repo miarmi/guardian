@@ -24,7 +24,7 @@
       <details{{if or (eq $.Saved .ID) (eq $.Added .ID)}} open{{end}}>
         <summary>
           <span class="sit-name">{{.Name}}</span>
-          <span class="sit-meta">{{if .Enabled}}{{t (printf "act_%s" .Action)}} · {{t "f_sens"}}: {{t (printf "sens_%s" .Sensitivity)}}{{else}}{{t "sit_off"}}{{end}}</span>
+          <span class="sit-meta">{{if .Enabled}}{{t (printf "act_%s" .Action)}} · {{t "f_sens"}}: {{t (printf "sens_%s" .Sensitivity)}} · {{t (printf "who_%s" .Recipients)}}{{else}}{{t "sit_off"}}{{end}}</span>
         </summary>
         {{if eq $.Saved .ID}}<p class="status-line ok" role="status">{{t "sit_saved"}}</p>{{end}}
         {{if eq $.Added .ID}}<p class="status-line ok" role="status">{{t "sit_added"}}</p>{{end}}

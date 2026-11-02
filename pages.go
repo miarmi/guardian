@@ -19,6 +19,7 @@ type overviewAnalysis struct {
 	OpenCount   int
 	Alert       string // banner text, "" when none
 	Reason      string // why there is no model, when it is just the key
+	MailFailed  string // why the child's e-mail didn't go out (criterion 25)
 }
 
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
@@ -35,6 +36,7 @@ func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 		}
 		o.Alert = a.lang.T("alert_banner", sit, name)
 	}
+	o.MailFailed = a.nt.childMailError(ctx)
 	if a.an == nil {
 		o.State = analysisState{NoModel: true}
 		return o
@@ -71,6 +73,7 @@ type settingsData struct {
 	Mail        mailView
 	MailResult  string
 	MailOK      bool
+	MailTyped   *mailSettings // the form as typed, when it had a mistake
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +113,9 @@ func (a *App) renderSettings(w http.ResponseWriter, r *http.Request, d settingsD
 	d.Lang, d.Version = a.lang.code, a.version
 	d.Mail = a.mailView(r.Context(), r)
 	d.Mail.Result, d.Mail.ResultOK = d.MailResult, d.MailOK
+	if d.MailTyped != nil {
+		d.Mail.M = *d.MailTyped
+	}
 	if a.an == nil {
 		// Previews show the form as saved, locked: nothing is analysed there.
 		d.S = previewSettings(r.Context(), a.store)

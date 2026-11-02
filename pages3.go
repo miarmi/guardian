@@ -4,21 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
 // --- the child's page (criterion 26), reachable without the lab login ---
 
 type kidData struct {
-	Lang     string
-	Valid    bool
-	Finding  Finding
-	Thanks   bool
-	Already  bool
-	Contacts []string
-	Token    string
+	Lang          string
+	Valid         bool
+	Finding       Finding
+	Thanks        bool
+	Already       string // when the request already went out, as words
+	Resolved      bool
+	Contacts      []string
+	Token         string
+	HelplineLabel string
+	HelplineTel   string
 }
 
 func (a *App) kidPage(w http.ResponseWriter, r *http.Request) {
@@ -26,11 +31,17 @@ func (a *App) kidPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) renderKid(w http.ResponseWriter, r *http.Request, thanks bool) {
-	d := kidData{Lang: a.lang.code, Contacts: a.lang.contacts, Thanks: thanks}
+	d := kidData{Lang: a.lang.code, Contacts: a.lang.contacts, Thanks: thanks,
+		HelplineLabel: a.lang.helplineLabel, HelplineTel: a.lang.helplineTel}
 	token := r.PathValue("token")
 	if id, ok := a.nt.checkKidToken(token); ok {
 		if f, found, err := a.store.Finding(r.Context(), id); err == nil && found {
-			d.Valid, d.Finding, d.Token, d.Already = true, f, token, f.ChildHelp && !thanks
+			d.Valid, d.Finding, d.Token = true, f, token
+			d.Resolved = f.Status == "resolved"
+			if f.ChildHelp && !thanks {
+				when := a.lang.when(f.HelpAt.In(a.zone), time.Now().In(a.zone))
+				d.Already = a.lang.T("kid_already", when)
+			}
 		}
 	}
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -119,7 +130,16 @@ func (a *App) pushSubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	// The page remembers its own endpoint, to mark "this device".
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"endpoint": in.Endpoint})
+}
+
+func (a *App) pushTest(w http.ResponseWriter, r *http.Request) {
+	if a.an != nil {
+		a.nt.testPush(context.WithoutCancel(r.Context()))
+	}
+	http.Redirect(w, r, "/settings?pushtest=1#notifications", http.StatusSeeOther)
 }
 
 func (a *App) pushRemove(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +153,8 @@ func (a *App) pushRemove(w http.ResponseWriter, r *http.Request) {
 
 type mailView struct {
 	M          mailSettings
+	Error      string // a typed address that isn't one
+	PushSent   bool
 	SecretHint string
 	PassHint   string
 	Practice   bool
@@ -145,10 +167,24 @@ type mailView struct {
 func (a *App) mailView(ctx context.Context, r *http.Request) mailView {
 	m := a.nt.mailSettings(ctx)
 	v := mailView{M: m, SecretHint: keyHint(m.AppSecret), PassHint: keyHint(m.Password), Practice: a.dev != nil,
-		Saved: r.URL.Query().Get("mailsaved") == "1"}
+		Saved: r.URL.Query().Get("mailsaved") == "1", PushSent: r.URL.Query().Get("pushtest") == "1"}
 	v.M.AppSecret, v.M.Password = "", ""
 	v.Devices, _ = a.store.PushDevices(ctx)
 	return v
+}
+
+// badAddress returns the first entry that isn't an e-mail address.
+func badAddress(list string) string {
+	for _, a := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == ';' || r == '\n' || r == '\r' }) {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		if addr, err := mail.ParseAddress(a); err != nil || addr.Address != a {
+			return a
+		}
+	}
+	return ""
 }
 
 func mailFromForm(r *http.Request, practiceAllowed bool) (mailSettings, string, string) {
@@ -173,9 +209,6 @@ func mailFromForm(r *http.Request, practiceAllowed bool) (mailSettings, string, 
 	default:
 		m.Type = mailGraph
 	}
-	if m.ChildEmail != "" && !strings.Contains(m.ChildEmail, "@") {
-		m.ChildEmail = ""
-	}
 	return m, strings.TrimSpace(f.Get("app_secret")), strings.TrimSpace(f.Get("password"))
 }
 
@@ -190,6 +223,18 @@ func (a *App) saveMail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, secret, pass := mailFromForm(r, a.dev != nil)
+	bad := badAddress(r.PostForm.Get("child_email"))
+	if bad == "" {
+		bad = badAddress(r.PostForm.Get("parent_emails"))
+	}
+	if bad != "" { // keep what was typed, say which address is wrong
+		d := settingsData{S: a.an.settings(r.Context())}
+		d.MailResult = a.lang.T("bad_address", bad)
+		d.MailTyped = &mailSettings{Type: m.Type, ChildEmail: r.PostForm.Get("child_email"), ParentEmails: r.PostForm.Get("parent_emails"),
+			Tenant: m.Tenant, AppID: m.AppID, Host: m.Host, Port: m.Port, User: m.User, Sender: m.Sender}
+		a.renderSettings(w, r, d)
+		return
+	}
 	if err := a.nt.saveMailSettings(r.Context(), m, secret, pass); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return

@@ -16,7 +16,7 @@
 {{end}}
 <p style="margin:12px 0 0;color:#5f6577">{{.L.T "digest_chats" .Chats}}</p>
 {{if .Child}}<div style="border-top:1px solid #d8d6cf;margin-top:16px;padding-top:16px">
-{{range $i, $c := .Contacts}}{{if eq $i 0}}<p style="margin:0 0 6px;font-weight:700">{{$c}}</p>{{else}}<p style="margin:0 0 4px">{{$c}}</p>{{end}}{{end}}
+{{range $i, $c := .Contacts}}{{if eq $i 0}}<p style="margin:0 0 6px;font-weight:700">{{$c}}</p>{{else}}<p style="margin:0 0 6px">{{linkify $c}}</p>{{end}}{{end}}
 </div>{{end}}
 </div>
 </body></html>
