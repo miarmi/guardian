@@ -102,6 +102,7 @@ type overviewAnalysis struct {
 	OpenCount   int
 	Alert       string // banner text, "" when none
 	AlertMore   string // "+1 další" when more is waiting
+	AlertChild  bool   // the banner is the child asking for help (shown in honey, not red)
 	Reason      string // why there is no model, when it is just the key
 	MailFailed  string // why the child's e-mail didn't go out (criterion 25)
 }
@@ -109,8 +110,8 @@ type overviewAnalysis struct {
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	o := overviewAnalysis{MailFailed: a.nt.childMailError(ctx)}
 	o.OpenCount, _ = a.store.OpenFindingCount(ctx)
-	if alerts := a.banners(ctx); len(alerts) > 0 {
-		o.Alert = alerts[0]
+	if alerts, child := a.banners(ctx); len(alerts) > 0 {
+		o.Alert, o.AlertChild = alerts[0], child
 		if len(alerts) > 1 {
 			o.AlertMore = a.lang.T("banner_more", len(alerts)-1)
 		}
@@ -130,18 +131,18 @@ func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	return o
 }
 
-// banners lists what waits for the parents: the child's requests first,
-// then new serious findings.
-func (a *App) banners(ctx context.Context) []string {
-	var out []string
+// banners lists what waits for the parents, the child's requests first;
+// child says whether the first one is the child's.
+func (a *App) banners(ctx context.Context) (out []string, child bool) {
 	if sit, chat, ok, _ := a.store.UnseenHelp(ctx); ok {
 		out = append(out, a.lang.T("help_banner", sit, chat))
 	}
 	if ok, _ := a.store.UnseenHelpRequest(ctx); ok {
 		out = append(out, a.lang.T("help_request"))
 	}
+	child = len(out) > 0
 	if sit, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
 		out = append(out, a.lang.T("alert_banner", sit, chat))
 	}
-	return out
+	return out, child
 }

@@ -1,11 +1,12 @@
 <!doctype html>
 <html><body style="margin:0;padding:24px;background:#f5f8f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1c2a31;font-size:16px;line-height:1.5">
 <div style="max-width:560px;margin:0 auto"><div style="background:#1e6b64;color:#ffffff;border-radius:16px 16px 0 0;padding:18px 24px;font-size:20px;font-weight:700">Guardian</div><div style="background:#ffffff;border:1px solid #d6e0de;border-top:0;border-radius:0 0 16px 16px;padding:24px">
+<p style="margin:0 0 16px;font-size:18px;font-weight:700">{{.Week}}</p>
 {{if .Requests}}
 <p style="margin:0 0 12px;font-weight:700">{{.L.T "digest_requests"}}</p>
 {{range .Requests}}
-<div style="border-left:3px solid #1e6b64;padding:4px 0 4px 12px;margin:0 0 12px">
-<p style="margin:0;font-weight:700">{{$.L.T "help_label"}} <span style="font-weight:400;color:#56666d">· {{if eq .Status "resolved"}}{{$.L.T "digest_resolved"}}{{else}}{{$.L.T "digest_open"}}{{end}}</span></p>
+<div style="border-left:4px solid #f2b04a;background:#fcf0da;border-radius:0 8px 8px 0;padding:8px 12px;margin:0 0 12px">
+<p style="margin:0;font-weight:700">{{.When}} <span style="font-weight:400;color:#56666d">· {{if eq .Status "resolved"}}{{$.L.T "digest_resolved"}}{{else}}{{$.L.T "digest_open"}}{{end}}</span></p>
 {{if .Message}}<p style="margin:4px 0 0;white-space:pre-line">{{.Message}}</p>{{end}}
 </div>
 {{end}}
@@ -22,7 +23,8 @@
 {{else}}
 <p style="margin:0 0 12px">{{.L.T "digest_none"}}</p>
 {{end}}
-<p style="margin:12px 0 0;color:#56666d">{{.L.T "digest_chats" .Chats}}</p>
+<p style="margin:12px 0 20px;color:#56666d">{{.L.T "digest_chats" .Chats}}</p>
+<p style="margin:0"><a href="{{.Link}}" style="display:inline-block;background:#1e6b64;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:999px">{{.L.T "digest_open_findings"}}</a></p>
 </div>
 </div>
 </body></html>

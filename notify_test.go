@@ -417,7 +417,7 @@ func TestChildSeesResolvedAndBadAddressesAreSaid(t *testing.T) {
 
 func TestLinkify(t *testing.T) {
 	got := string(linkify("Když jde o bezpečí hned: 158 (policie) nebo 112 <b>"))
-	if !strings.Contains(got, `<a class="tel" href="tel:158" style="white-space:nowrap">158</a>`) || !strings.Contains(got, `href="tel:112"`) || strings.Contains(got, "<b>") {
+	if !strings.Contains(got, `<a class="tel" href="tel:158" style="white-space:nowrap;color:#1e6b64">158</a>`) || !strings.Contains(got, `href="tel:112"`) || strings.Contains(got, "<b>") {
 		t.Fatalf("got %s", got)
 	}
 }

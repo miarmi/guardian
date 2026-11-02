@@ -26,7 +26,7 @@
       <a href="/settings">{{t "nav_settings"}}</a>
     </nav>
   </header>
-  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}}{{with .Analysis.AlertMore}} <span class="banner-more">{{.}}</span>{{end}} <span class="banner-go">{{t "open_arrow"}}</span></a>{{end}}
+  {{if .Analysis.Alert}}<a class="banner{{if .Analysis.AlertChild}} child{{end}}" href="/findings" role="alert">{{.Analysis.Alert}}{{with .Analysis.AlertMore}} <span class="banner-more">{{.}}</span>{{end}} <span class="banner-go">{{t "open_arrow"}}</span></a>{{end}}
 
   <section aria-labelledby="connectors-heading">
     <h2 id="connectors-heading">{{t "connectors"}}</h2>

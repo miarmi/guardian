@@ -22,6 +22,7 @@
   --sun-ink: #6b4708;
   --alert: #b4432e;
   --alert-soft: #fbe9e4;
+  --on-alert: #ffffff;
   --ok: #217a52;
   --caution: #8a5a00;
   --field: #ffffff;
@@ -58,6 +59,7 @@
     --sun-ink: #f6d39a;
     --alert: #f08a74;
     --alert-soft: #3a1d17;
+    --on-alert: #2a0f09;
     --ok: #79d0a3;
     --caution: #e7b85c;
     --field: #0f1e23;
@@ -132,7 +134,9 @@ header .chip { background: rgba(255, 255, 255, 0.16); color: #ffffff; }
   text-decoration: none;
 }
 .banner-go { white-space: nowrap; margin-left: 0.25rem; color: var(--alert); text-decoration: underline; }
-.banner-more { font-weight: 400; white-space: nowrap; color: var(--muted); }
+.banner-more { font-weight: 400; white-space: nowrap; }
+.banner.child { background: var(--sun-soft); border-left-color: var(--sun); }
+.banner.child .banner-go { color: var(--sun-ink); }
 
 h2 { font-size: 1.2rem; margin: 2rem 0 0.6rem; letter-spacing: -0.005em; }
 h3 { font-size: 1.02rem; margin: 1.25rem 0 0.5rem; }
@@ -167,7 +171,8 @@ button, .button {
 button:hover, .button:hover { background: var(--sea-deep); border-color: var(--sea-deep); }
 button.secondary, .button.secondary { background: transparent; color: var(--sea); border-color: var(--line); }
 button.secondary:hover, .button.secondary:hover { border-color: var(--sea); background: var(--sea-soft); }
-button.danger { background: var(--alert); border-color: var(--alert); color: #ffffff; }
+button.danger { background: transparent; border-color: var(--alert); color: var(--alert); }
+button.danger:hover { background: var(--alert-soft); border-color: var(--alert); }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
 .choices { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
 .choices form { margin: 0; }
@@ -235,7 +240,7 @@ summary::-webkit-details-marker { display: none; }
 .requests .finding.closed { border-left-color: var(--line); background: var(--surface); }
 .finding-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .finding-head .sit-name { flex-basis: 100%; font-size: 1.08rem; }
-.alert-chip { background: var(--alert); color: #ffffff; }
+.alert-chip { background: var(--alert); color: var(--on-alert); }
 .help-chip { background: var(--sun); color: #3a2604; }
 .reason { margin: 0.55rem 0; }
 blockquote { margin: 0.5rem 0; padding: 0.55rem 0.85rem; border-left: 3px solid var(--line); background: var(--paper); border-radius: 0.5rem; overflow-wrap: anywhere; }
@@ -268,12 +273,12 @@ blockquote .who { display: block; font-size: 0.85rem; font-weight: 700; color: v
 .contacts h2 { font-size: 1.02rem; margin: 0 0 0.35rem; }
 .contacts ul { margin: 0; padding-left: 1.1rem; list-style: disc; display: block; }
 .contacts li { background: none; border: 0; border-radius: 0; padding: 0.55rem 0; line-height: 1.5; }
-.contacts a.tel, .contacts a.site { display: inline-block; padding: 0.7rem 0; margin: -0.7rem 0; font-weight: 700; color: var(--sea); white-space: nowrap; }
+.contacts a.tel, .contacts a.site { display: inline-block; padding: 0.7rem 0; margin: -0.7rem 0; font-weight: 700; color: var(--sea) !important; white-space: nowrap; }
 
 /* The child's pages: the same roof, more room to breathe. */
 .kid main { max-width: 36rem; }
 .kid .instruction { font-size: 1.15rem; }
-.kid .reason { font-size: 1.05rem; padding: 0.85rem 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.kid .reason { font-size: 1.12rem; margin: 0 0 1.25rem; padding: 0.15rem 0 0.15rem 0.9rem; border-left: 4px solid var(--sea); }
 .kid .status-line.ok { padding: 0.85rem 1rem; border-radius: var(--radius); background: var(--sea-soft); }
 .kid .status-line.caution { padding: 0.85rem 1rem; border-radius: var(--radius); background: var(--sun-soft); color: var(--sun-ink); }
 .kid form .choices button { width: 100%; min-height: 3.25rem; font-size: 1.1rem; }

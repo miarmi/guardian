@@ -1,8 +1,10 @@
 Guardian
 
+{{.Week}}
+
 {{if .Requests}}{{.L.T "digest_requests"}}
 {{range .Requests}}
-- {{$.L.T "help_label"}} ({{if eq .Status "resolved"}}{{$.L.T "digest_resolved"}}{{else}}{{$.L.T "digest_open"}}{{end}})
+- {{.When}} ({{if eq .Status "resolved"}}{{$.L.T "digest_resolved"}}{{else}}{{$.L.T "digest_open"}}{{end}})
 {{if .Message}}  {{.Message}}
 {{end}}{{end}}
 {{end}}{{if .Findings}}{{.L.T "digest_intro"}}
@@ -14,3 +16,4 @@ Guardian
 {{end}}
 {{.L.T "digest_chats" .Chats}}
 
+{{.L.T "digest_open_findings"}}: {{.Link}}

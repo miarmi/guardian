@@ -52,7 +52,16 @@ func (n *notifier) sendDigest(ctx context.Context, end time.Time) error {
 		return err
 	}
 	chats, _ := n.st.CountChats(ctx)
-	html, text, err := n.renderMail("digest", map[string]any{"Findings": fs, "Requests": reqs, "Chats": chats})
+	type request struct {
+		HelpRequest
+		When string
+	}
+	var rs []request
+	for _, r := range reqs {
+		rs = append(rs, request{r, n.lang.when(r.Created.In(n.zone), time.Now().In(n.zone))})
+	}
+	html, text, err := n.renderMail("digest", map[string]any{"Findings": fs, "Requests": rs, "Chats": chats,
+		"Week": n.lang.T("digest_week", n.lang.day(start), n.lang.day(end)), "Link": n.link("/findings")})
 	if err != nil {
 		return err
 	}
