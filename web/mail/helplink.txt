@@ -1,0 +1,9 @@
+{{.L.T "hello"}}
+
+{{.L.T "helplink_mail_intro"}}
+
+{{.L.T "hl_button"}}: {{.Link}}
+{{.L.T "helplink_valid" .Until}}
+
+{{range .Contacts}}{{.}}
+{{end}}

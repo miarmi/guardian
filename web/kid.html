@@ -13,7 +13,20 @@
   <header>
     <h1>{{t "kid_title"}}</h1>
   </header>
-  {{if .Valid}}
+  {{if and .Valid .Personal}}
+    {{if .Thanks}}
+      <p class="status-line ok" role="status">{{t "kid_thanks"}}</p>
+    {{else}}
+      <p class="instruction">{{t "hl_intro"}}</p>
+      <form method="post" action="/kid/help/{{.Token}}" class="form">
+        <label for="message">{{t "hl_field"}}</label>
+        <textarea id="message" name="message" rows="4" maxlength="1000" aria-describedby="message-hint"></textarea>
+        <p class="note" id="message-hint">{{t "kid_optional"}}</p>
+        <p class="note">{{t "kid_nothing_yet"}}</p>
+        <div class="choices"><button type="submit">{{t "hl_button"}}</button></div>
+      </form>
+    {{end}}
+  {{else if .Valid}}
     <p class="instruction">{{t "kid_found" .Finding.Situation.Name .Finding.ChatLabel}}</p>
     <p class="reason">{{.Finding.Reason}}</p>
     {{if .Thanks}}

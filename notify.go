@@ -27,13 +27,14 @@ import (
 	"time"
 )
 
-// Phase 3: telling people (criteria 22–29).
+// Phase 3: telling people (criteria 22–30).
 
 const (
 	mailGraph    = "graph"
 	mailSMTP     = "smtp"
 	mailPractice = "practice"
 	kidLinkLife  = 30 * 24 * time.Hour
+	helpLinkLife = 365 * 24 * time.Hour
 )
 
 // mailSettings is the e-mail part of Nastavení; secrets live in secrets/.
@@ -408,22 +409,37 @@ func (n *notifier) kidKey() ([]byte, error) {
 	return b, os.WriteFile(path, b, 0o600)
 }
 
-// kidToken signs a finding id and an expiry.
-func (n *notifier) kidToken(findingID int64, expires time.Time) (string, error) {
+// Signed links for the child. A finding's link (criterion 26) signs the
+// finding id; the personal help link (criterion 30) signs a generation
+// number, so sending a new one retires the old. Each kind has its own
+// domain, so one can't stand in for the other.
+const (
+	tokenFinding = "finding"
+	tokenHelp    = "help"
+)
+
+func (n *notifier) sign(kind string, id int64, expires time.Time) (string, error) {
 	key, err := n.kidKey()
 	if err != nil {
 		return "", err
 	}
 	payload := make([]byte, 16)
-	binary.BigEndian.PutUint64(payload[:8], uint64(findingID))
+	binary.BigEndian.PutUint64(payload[:8], uint64(id))
 	binary.BigEndian.PutUint64(payload[8:], uint64(expires.Unix()))
-	mac := hmac.New(sha256.New, key)
-	mac.Write(payload)
-	return b64.EncodeToString(payload) + "." + b64.EncodeToString(mac.Sum(nil)[:16]), nil
+	return b64.EncodeToString(payload) + "." + b64.EncodeToString(tokenMAC(key, kind, payload)), nil
 }
 
-// checkKidToken returns the finding id of a valid, unexpired token.
-func (n *notifier) checkKidToken(token string) (int64, bool) {
+func tokenMAC(key []byte, kind string, payload []byte) []byte {
+	mac := hmac.New(sha256.New, key)
+	if kind != tokenFinding { // finding links keep the original form
+		mac.Write([]byte(kind + ":"))
+	}
+	mac.Write(payload)
+	return mac.Sum(nil)[:16]
+}
+
+// check returns the id of a valid, unexpired token of that kind.
+func (n *notifier) check(kind, token string) (int64, bool) {
 	p, sig, ok := strings.Cut(token, ".")
 	if !ok {
 		return 0, false
@@ -442,9 +458,7 @@ func (n *notifier) checkKidToken(token string) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	mac := hmac.New(sha256.New, key)
-	mac.Write(payload)
-	if !hmac.Equal(mac.Sum(nil)[:16], got) {
+	if !hmac.Equal(tokenMAC(key, kind, payload), got) {
 		return 0, false
 	}
 	if time.Now().Unix() > int64(binary.BigEndian.Uint64(payload[8:])) {
@@ -453,13 +467,97 @@ func (n *notifier) checkKidToken(token string) (int64, bool) {
 	return int64(binary.BigEndian.Uint64(payload[:8])), true
 }
 
+func (n *notifier) kidToken(findingID int64, expires time.Time) (string, error) {
+	return n.sign(tokenFinding, findingID, expires)
+}
+
+func (n *notifier) checkKidToken(token string) (int64, bool) {
+	return n.check(tokenFinding, token)
+}
+
+// helpLink returns the child's current personal link and until when it is
+// valid; with create, a missing or expired one is made (without e-mail).
+func (n *notifier) helpLink(ctx context.Context, create bool) (string, time.Time, error) {
+	gen, _ := strconv.ParseInt(n.setting(ctx, "help_link_gen"), 10, 64)
+	exp, _ := strconv.ParseInt(n.setting(ctx, "help_link_expires"), 10, 64)
+	until := time.Unix(exp, 0)
+	if gen == 0 || !time.Now().Before(until) {
+		if !create {
+			return "", time.Time{}, nil
+		}
+		gen, until = gen+1, time.Now().Add(helpLinkLife)
+		if err := n.saveHelpLink(ctx, gen, until); err != nil {
+			return "", time.Time{}, err
+		}
+	}
+	token, err := n.sign(tokenHelp, gen, until)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return n.link("/kid/help/" + token), until, nil
+}
+
+func (n *notifier) saveHelpLink(ctx context.Context, gen int64, until time.Time) error {
+	if err := n.st.SetSetting(ctx, "help_link_gen", itoa64(gen)); err != nil {
+		return err
+	}
+	return n.st.SetSetting(ctx, "help_link_expires", itoa64(until.Unix()))
+}
+
+// checkHelpToken accepts only the current generation's link.
+func (n *notifier) checkHelpToken(ctx context.Context, token string) bool {
+	gen, ok := n.check(tokenHelp, token)
+	if !ok {
+		return false
+	}
+	cur, _ := strconv.ParseInt(n.setting(ctx, "help_link_gen"), 10, 64)
+	return gen == cur
+}
+
+// sendHelpLink makes a new personal link and e-mails it to the child; the
+// old link stops working only once the new one went out.
+func (n *notifier) sendHelpLink(ctx context.Context) error {
+	m := n.mailSettings(ctx)
+	if m.ChildEmail == "" {
+		return errors.New(n.lang.T("mail_no_child"))
+	}
+	gen, _ := strconv.ParseInt(n.setting(ctx, "help_link_gen"), 10, 64)
+	gen++
+	until := time.Now().Add(helpLinkLife)
+	token, err := n.sign(tokenHelp, gen, until)
+	if err != nil {
+		return err
+	}
+	link := n.link("/kid/help/" + token)
+	data := n.view(map[string]any{"Link": link, "Contacts": n.lang.contacts, "Until": n.lang.date(until.In(n.zone))})
+	var html, text bytes.Buffer
+	if err := mailTmpl.ExecuteTemplate(&html, "helplink.html", data); err != nil {
+		return err
+	}
+	if err := mailTmpl.ExecuteTemplate(&text, "helplink.txt", data); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	if err := n.send(ctx, email{To: []string{m.ChildEmail}, Subject: n.lang.T("helplink_subject"), HTML: html.String(), Text: text.String(), Links: []string{link}}); err != nil {
+		return err
+	}
+	return n.saveHelpLink(context.WithoutCancel(ctx), gen, until)
+}
+
+func (n *notifier) setting(ctx context.Context, k string) string {
+	v, _ := n.st.Setting(ctx, k)
+	return v
+}
+
 func (n *notifier) link(path string) string {
 	return strings.TrimRight(n.baseURL, "/") + path
 }
 
 // --- what happens on a finding ---
 
-// onFinding tells people about a finding the analysis just recorded.
+// onFinding tells the parents about a new finding first (criterion 24) and
+// queues the child's e-mail for after them (criterion 25).
 func (n *notifier) onFinding(ctx context.Context, id int64, isNew bool) {
 	if !isNew {
 		return
@@ -468,62 +566,68 @@ func (n *notifier) onFinding(ctx context.Context, id int64, isNew bool) {
 	if err != nil || !ok {
 		return
 	}
-	if f.Situation.tellsParents() && f.Situation.Action == "alert" {
+	if f.Situation.Action == "alert" {
 		n.pushParents(ctx, pushMessage{
 			Title: n.lang.T("push_title", f.Situation.Name),
 			Body:  n.lang.T("push_body", f.ChatLabel()),
 			URL:   n.link("/findings"),
 		})
-	}
-	if f.Situation.tellsChild() {
-		n.tryChildMail(ctx, f)
-	}
-}
-
-// tryChildMail sends the child's e-mail; a failure is kept, shown on the
-// overview and retried at the next hourly look (criterion 25).
-func (n *notifier) tryChildMail(ctx context.Context, f Finding) {
-	err := n.mailChild(ctx, f)
-	if err != nil {
-		log.Printf("mail to the child: %v", err)
-		n.st.SetChildMailPending(ctx, f.ID, true)
-		n.st.SetSetting(ctx, "mail_child_error", n.lang.explain(err))
+		// Due at the next hourly look after this one.
+		n.st.QueueChildMail(ctx, f.ID, time.Now())
 		return
 	}
-	n.st.SetChildMailPending(ctx, f.ID, false)
+	n.st.QueueChildMail(ctx, f.ID, time.Time{}) // after the parents' digest
 }
 
-// retryChildMails tries the failed e-mails to the child again.
-func (n *notifier) retryChildMails(ctx context.Context) {
-	ids, err := n.st.PendingChildMails(ctx)
+// retryChildMails runs after every hourly look: it sends the child's
+// e-mails whose parents were told before the look began, and tries failed
+// ones again.
+func (n *notifier) retryChildMails(ctx context.Context, lookStart time.Time) {
+	ids, err := n.st.ChildMailsDue(ctx, lookStart)
 	if err != nil {
 		return
 	}
+	n.sendChildMails(ctx, ids)
+}
+
+// sendChildMails sends each e-mail; a failure is kept, shown on the
+// overview and tried again at the next look.
+func (n *notifier) sendChildMails(ctx context.Context, ids []int64) {
+	failed := false
 	for _, id := range ids {
 		f, ok, err := n.st.Finding(ctx, id)
-		if err != nil || !ok {
-			n.st.SetChildMailPending(ctx, id, false)
+		if err != nil || !ok || f.Status == "false_alarm" {
+			n.st.ChildMailSent(ctx, id) // nothing to send
 			continue
 		}
-		n.tryChildMail(ctx, f)
+		if err := n.mailChild(ctx, f); err != nil {
+			log.Printf("mail to the child: %v", err)
+			n.st.SetSetting(ctx, "mail_child_error", n.lang.explain(err))
+			failed = true
+			continue
+		}
+		n.st.ChildMailSent(ctx, id)
 	}
-	if ids, _ := n.st.PendingChildMails(ctx); len(ids) == 0 {
+	if !failed && len(ids) > 0 {
 		n.st.SetSetting(ctx, "mail_child_error", "")
 	}
 }
 
 // childMailError is why the child's e-mail last failed, "" when all went out.
 func (n *notifier) childMailError(ctx context.Context) string {
-	v, _ := n.st.Setting(ctx, "mail_child_error")
-	return v
+	return n.setting(ctx, "mail_child_error")
 }
 
-// onHelp tells the parents the child asked for help (criterion 26).
+// onHelp tells the parents the child asked for help with a finding (criterion 26).
 func (n *notifier) onHelp(ctx context.Context, f Finding) {
 	n.pushParents(ctx, pushMessage{Title: "Guardian", Body: n.lang.T("help_banner", f.Situation.Name, f.ChatLabel()), URL: n.link("/findings")})
 }
 
-var errNoChildEmail = errors.New("no child e-mail")
+// onHelpRequest tells the parents the child asked for help through the
+// personal link (criterion 30); never with the child's message.
+func (n *notifier) onHelpRequest(ctx context.Context) {
+	n.pushParents(ctx, pushMessage{Title: "Guardian", Body: n.lang.T("help_request"), URL: n.link("/findings")})
+}
 
 func (n *notifier) mailChild(ctx context.Context, f Finding) error {
 	m := n.mailSettings(ctx)
@@ -535,7 +639,11 @@ func (n *notifier) mailChild(ctx context.Context, f Finding) error {
 		return err
 	}
 	link := n.link("/kid/" + token)
-	data := map[string]any{"F": f, "Link": link, "Contacts": n.lang.contacts, "ParentsKnow": f.Situation.tellsParents()}
+	help, _, err := n.helpLink(ctx, true)
+	if err != nil {
+		return err
+	}
+	data := map[string]any{"F": f, "Link": link, "HelpLink": help, "Contacts": n.lang.contacts}
 	var html, text bytes.Buffer
 	if err := mailTmpl.ExecuteTemplate(&html, "child.html", n.view(data)); err != nil {
 		return err
@@ -543,11 +651,7 @@ func (n *notifier) mailChild(ctx context.Context, f Finding) error {
 	if err := mailTmpl.ExecuteTemplate(&text, "child.txt", n.view(data)); err != nil {
 		return err
 	}
-	err = n.send(ctx, email{To: []string{m.ChildEmail}, Subject: n.lang.T("child_subject"), HTML: html.String(), Text: text.String(), Links: []string{link}})
-	if errors.Is(err, errNoChildEmail) {
-		return nil
-	}
-	return err
+	return n.send(ctx, email{To: []string{m.ChildEmail}, Subject: n.lang.T("child_subject"), HTML: html.String(), Text: text.String(), Links: []string{link, help}})
 }
 
 // view hands mail templates the words of the page language.
@@ -586,8 +690,8 @@ func nextDigest(now time.Time) time.Time {
 	return d
 }
 
-// sendDigest sends the week up to `end` to the parents and the child; each
-// copy leaves out situations that aren't for that person.
+// sendDigest sends the week up to `end` to the parents (criterion 28);
+// afterwards the child's e-mails that waited for it go out (criterion 25).
 func (n *notifier) sendDigest(ctx context.Context, end time.Time) error {
 	end = end.In(n.zone)
 	start := end.AddDate(0, 0, -7)
@@ -595,40 +699,34 @@ func (n *notifier) sendDigest(ctx context.Context, end time.Time) error {
 	if err != nil {
 		return err
 	}
+	reqs, err := n.st.HelpRequestsSince(ctx, start)
+	if err != nil {
+		return err
+	}
 	chats, _ := n.st.CountChats(ctx)
 	m := n.mailSettings(ctx)
+	if len(m.parents()) == 0 {
+		return nil
+	}
 	// The label names every day the digest covers, including today.
 	subject := n.lang.T("digest_subject", n.lang.day(start), n.lang.day(end))
-	var firstErr error
-	for _, who := range []struct {
-		to   []string
-		keep func(Situation) bool
-	}{
-		{m.parents(), Situation.tellsParents},
-		{splitAddresses(m.ChildEmail), Situation.tellsChild},
-	} {
-		if len(who.to) == 0 {
-			continue
-		}
-		var mine []Finding
-		for _, f := range fs {
-			if who.keep(f.Situation) {
-				mine = append(mine, f)
-			}
-		}
-		data := n.view(map[string]any{"Findings": mine, "Chats": chats, "Contacts": n.lang.contacts, "Child": who.to[0] == m.ChildEmail})
-		var html, text bytes.Buffer
-		if err := mailTmpl.ExecuteTemplate(&html, "digest.html", data); err != nil {
-			return err
-		}
-		if err := mailTmpl.ExecuteTemplate(&text, "digest.txt", data); err != nil {
-			return err
-		}
-		if err := n.send(ctx, email{To: who.to, Subject: subject, HTML: html.String(), Text: text.String()}); err != nil && firstErr == nil {
-			firstErr = err
-		}
+	data := n.view(map[string]any{"Findings": fs, "Requests": reqs, "Chats": chats})
+	var html, text bytes.Buffer
+	if err := mailTmpl.ExecuteTemplate(&html, "digest.html", data); err != nil {
+		return err
 	}
-	return firstErr
+	if err := mailTmpl.ExecuteTemplate(&text, "digest.txt", data); err != nil {
+		return err
+	}
+	if err := n.send(ctx, email{To: m.parents(), Subject: subject, HTML: html.String(), Text: text.String()}); err != nil {
+		return err
+	}
+	ids, err := n.st.ReleaseDigestMails(ctx, time.Now())
+	if err != nil {
+		return err
+	}
+	n.sendChildMails(ctx, ids)
+	return nil
 }
 
 // testMail sends a short test e-mail to the parents (Poslat zkušební e-mail).

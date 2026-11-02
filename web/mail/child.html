@@ -6,8 +6,10 @@
 <p style="margin:0 0 4px;font-weight:700">{{.F.Situation.Name}}</p>
 <p style="margin:0 0 4px;color:#5f6577">{{.L.T "fin_in_chat" .F.ChatLabel}}</p>
 <p style="margin:0 0 20px">{{.F.Reason}}</p>
-<p style="margin:0 0 8px">{{if .ParentsKnow}}{{.L.T "child_button_hint"}}{{else}}{{.L.T "child_hint_secret"}}{{end}}</p>
+<p style="margin:0 0 8px;font-weight:700">{{.L.T "child_parents_know"}}</p>
+<p style="margin:0 0 8px">{{.L.T "child_button_hint"}}</p>
 <p style="margin:0 0 24px"><a href="{{.Link}}" style="display:inline-block;background:#3b4a8a;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:10px">{{.L.T "child_button"}}</a></p>
+<p style="margin:0 0 24px">{{.L.T "child_other_intro"}} <a href="{{.HelpLink}}" style="color:#3b4a8a;font-weight:700">{{.L.T "child_other_link"}}</a></p>
 <div style="border-top:1px solid #d8d6cf;padding-top:16px;color:#1e2230">
 {{range $i, $c := .Contacts}}{{if eq $i 0}}<p style="margin:0 0 6px;font-weight:700">{{$c}}</p>{{else}}<p style="margin:0 0 6px">{{linkify $c}}</p>{{end}}{{end}}
 </div>

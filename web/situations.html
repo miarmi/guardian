@@ -24,7 +24,7 @@
       <details{{if or (eq $.Saved .ID) (eq $.Added .ID)}} open{{end}}>
         <summary>
           <span class="sit-name">{{.Name}}</span>
-          <span class="sit-meta">{{if .Enabled}}{{t (printf "act_%s" .Action)}} · {{t "f_sens"}}: {{t (printf "sens_%s" .Sensitivity)}} · {{t (printf "who_%s" .Recipients)}}{{else}}{{t "sit_off"}}{{end}}</span>
+          <span class="sit-meta">{{if .Enabled}}{{t (printf "act_%s" .Action)}} · {{t "f_sens"}}: {{t (printf "sens_%s" .Sensitivity)}}{{else}}{{t "sit_off"}}{{end}}</span>
         </summary>
         {{if eq $.Saved .ID}}<p class="status-line ok" role="status">{{t "sit_saved"}}</p>{{end}}
         {{if eq $.Added .ID}}<p class="status-line ok" role="status">{{t "sit_added"}}</p>{{end}}
@@ -65,10 +65,6 @@
           <label for="act-{{.ID}}">{{t "f_action"}}</label>
           <select id="act-{{.ID}}" name="action">
             {{$a := .Action}}{{range $v := list "record" "digest" "alert"}}<option value="{{$v}}"{{if eq $a $v}} selected{{end}}>{{t (printf "act_%s" $v)}}</option>{{end}}
-          </select>
-          <label for="who-{{.ID}}">{{t "f_who"}}</label>
-          <select id="who-{{.ID}}" name="recipients">
-            {{$w := .Recipients}}{{range $v := list "parents" "child" "both"}}<option value="{{$v}}"{{if eq $w $v}} selected{{end}}>{{t (printf "who_%s" $v)}}</option>{{end}}
           </select>
           <label class="check switch"><input type="checkbox" role="switch" name="enabled" value="1"{{if .Enabled}} checked{{end}}> {{t "f_enabled"}}</label>
 {{end}}

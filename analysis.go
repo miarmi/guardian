@@ -51,7 +51,7 @@ type analyzer struct {
 	secretsDir string
 	practice   *practiceModel // non-nil only in practice mode
 	notify     func(ctx context.Context, findingID int64, isNew bool)
-	afterLook  func(ctx context.Context) // e.g. retry failed e-mails
+	afterLook  func(ctx context.Context, start time.Time) // e.g. the child's e-mails
 
 	run sync.Mutex // one look at a time
 
@@ -193,7 +193,7 @@ func (z *analyzer) runOnce(ctx context.Context) {
 	z.run.Lock()
 	defer z.run.Unlock()
 	if z.afterLook != nil {
-		defer z.afterLook(ctx)
+		defer z.afterLook(ctx, time.Now())
 	}
 	m := z.settings(ctx)
 	if !m.ready() {

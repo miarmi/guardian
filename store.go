@@ -106,11 +106,25 @@ func openStore(path string) (*store, error) {
 		`ALTER TABLE findings ADD COLUMN help_seen INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE findings ADD COLUMN child_mail_pending INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE findings ADD COLUMN help_at INTEGER NOT NULL DEFAULT 0`,
+		// When the child's e-mail may go out (criterion 25): 0 waits for the
+		// parents' digest, otherwise the time the parents were told (ns).
+		`ALTER TABLE findings ADD COLUMN child_mail_due INTEGER NOT NULL DEFAULT 0`,
 	} {
 		if _, err := db.Exec(q); err != nil && !strings.Contains(err.Error(), "duplicate column") {
 			db.Close()
 			return nil, err
 		}
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS help_requests (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL,
+		message TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'open',
+		seen INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		db.Close()
+		return nil, err
 	}
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS push_devices (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -232,12 +246,7 @@ type Situation struct {
 	Action      string // record, digest, alert
 	Enabled     bool
 	Builtin     bool
-	Recipients  string // parents, child, both (criterion 24)
 }
-
-// tellsParents and tellsChild say who hears about this situation.
-func (x Situation) tellsParents() bool { return x.Recipients != "child" }
-func (x Situation) tellsChild() bool   { return x.Recipients != "parents" }
 
 // Quote is one message a finding quotes.
 type Quote struct {
@@ -273,11 +282,11 @@ func (f Finding) ChatLabel() string {
 	return f.Chat
 }
 
-const situationCols = "id, name, description, sensitivity, action, enabled, builtin, recipients"
+const situationCols = "id, name, description, sensitivity, action, enabled, builtin"
 
 func scanSituation(sc interface{ Scan(...any) error }) (Situation, error) {
 	var x Situation
-	err := sc.Scan(&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin, &x.Recipients)
+	err := sc.Scan(&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin)
 	return x, err
 }
 
@@ -310,8 +319,8 @@ func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error 
 		return err
 	}
 	for _, d := range defaults {
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin, recipients)
-			VALUES (?, ?, ?, ?, 1, 1, 'both')`, d.Name, d.Description, d.Sensitivity, d.Action); err != nil {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
+			VALUES (?, ?, ?, ?, 1, 1)`, d.Name, d.Description, d.Sensitivity, d.Action); err != nil {
 			return err
 		}
 	}
@@ -319,8 +328,8 @@ func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error 
 }
 
 func (s *store) AddSituation(ctx context.Context, x Situation) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin, recipients)
-		VALUES (?, ?, ?, ?, ?, 0, ?)`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled, x.Recipients)
+	res, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
+		VALUES (?, ?, ?, ?, ?, 0)`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled)
 	if err != nil {
 		return 0, err
 	}
@@ -328,8 +337,8 @@ func (s *store) AddSituation(ctx context.Context, x Situation) (int64, error) {
 }
 
 func (s *store) UpdateSituation(ctx context.Context, x Situation) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE situations SET name = ?, description = ?, sensitivity = ?, action = ?, enabled = ?, recipients = ?
-		WHERE id = ?`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled, x.Recipients, x.ID)
+	_, err := s.db.ExecContext(ctx, `UPDATE situations SET name = ?, description = ?, sensitivity = ?, action = ?, enabled = ?
+		WHERE id = ?`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled, x.ID)
 	return err
 }
 
@@ -473,7 +482,7 @@ func (s *store) findingsWhere(ctx context.Context, where, order string, args ...
 		x := &f.Situation
 		if err := rows.Scan(&f.ID, &f.Chat, &f.ChatName, &created, &updated, &f.Reason, &quotes, &f.Status, &f.Seen,
 			&f.ChildHelp, &f.ChildMessage, &helpAt,
-			&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin, &x.Recipients); err != nil {
+			&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin); err != nil {
 			return nil, err
 		}
 		f.Created, f.Updated = time.Unix(created, 0), time.Unix(updated, 0)
@@ -607,16 +616,46 @@ func (s *store) CountChats(ctx context.Context) (int, error) {
 	return n, err
 }
 
-// SetChildMailPending marks whether the child's e-mail about a finding still
-// has to go out (criterion 25).
-func (s *store) SetChildMailPending(ctx context.Context, id int64, pending bool) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_pending = ? WHERE id = ?", pending, id)
+// QueueChildMail says the child's e-mail about a finding is to go out:
+// due is when the parents were told, or zero to wait for their digest.
+func (s *store) QueueChildMail(ctx context.Context, id int64, due time.Time) error {
+	var at int64
+	if !due.IsZero() {
+		at = due.UnixNano()
+	}
+	_, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_pending = 1, child_mail_due = ? WHERE id = ?", at, id)
 	return err
 }
 
-// PendingChildMails lists findings whose e-mail to the child failed.
-func (s *store) PendingChildMails(ctx context.Context) ([]int64, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id FROM findings WHERE child_mail_pending = 1 ORDER BY id")
+// ChildMailSent clears the queued e-mail.
+func (s *store) ChildMailSent(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_pending = 0 WHERE id = ?", id)
+	return err
+}
+
+// ChildMailsDue lists findings whose e-mail to the child may go out: the
+// parents were told before `before`.
+func (s *store) ChildMailsDue(ctx context.Context, before time.Time) ([]int64, error) {
+	return s.ids(ctx, "SELECT id FROM findings WHERE child_mail_pending = 1 AND child_mail_due > 0 AND child_mail_due < ? ORDER BY id", before.UnixNano())
+}
+
+// ReleaseDigestMails marks the e-mails that waited for the parents' digest
+// as due now, and returns them.
+func (s *store) ReleaseDigestMails(ctx context.Context, upto time.Time) ([]int64, error) {
+	ids, err := s.ids(ctx, "SELECT id FROM findings WHERE child_mail_pending = 1 AND child_mail_due = 0 AND created_at <= ? ORDER BY id", upto.Unix())
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if _, err := s.db.ExecContext(ctx, "UPDATE findings SET child_mail_due = ? WHERE id = ?", upto.UnixNano(), id); err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
+}
+
+func (s *store) ids(ctx context.Context, q string, args ...any) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -630,4 +669,93 @@ func (s *store) PendingChildMails(ctx context.Context) ([]int64, error) {
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+// HelpRequest is the child asking for help through the personal link
+// (criterion 30).
+type HelpRequest struct {
+	ID      int64
+	Created time.Time
+	Updated time.Time
+	Message string
+	Status  string // open, resolved
+}
+
+// helpMerge is how long a second request adds to the first.
+const helpMerge = 10 * time.Minute
+
+// AddHelpRequest records a request; within helpMerge of the last open one
+// it adds to that one instead (isNew false).
+func (s *store) AddHelpRequest(ctx context.Context, message string) (id int64, isNew bool, err error) {
+	now := time.Now()
+	var old string
+	err = s.db.QueryRowContext(ctx, `SELECT id, message FROM help_requests WHERE status = 'open' AND created_at >= ?
+		ORDER BY id DESC LIMIT 1`, now.Add(-helpMerge).Unix()).Scan(&id, &old)
+	if err == nil {
+		if message != "" {
+			if old != "" {
+				old += "\n\n"
+			}
+			old += message
+		}
+		_, err = s.db.ExecContext(ctx, "UPDATE help_requests SET message = ?, updated_at = ?, seen = 0 WHERE id = ?", old, now.Unix(), id)
+		return id, false, err
+	}
+	if err != sql.ErrNoRows {
+		return 0, false, err
+	}
+	res, err := s.db.ExecContext(ctx, "INSERT INTO help_requests (created_at, updated_at, message) VALUES (?, ?, ?)", now.Unix(), now.Unix(), message)
+	if err != nil {
+		return 0, false, err
+	}
+	id, err = res.LastInsertId()
+	return id, true, err
+}
+
+func (s *store) helpRequestsWhere(ctx context.Context, where, order string, args ...any) ([]HelpRequest, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, created_at, updated_at, message, status FROM help_requests WHERE "+where+" "+order, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []HelpRequest
+	for rows.Next() {
+		var h HelpRequest
+		var c, u int64
+		if err := rows.Scan(&h.ID, &c, &u, &h.Message, &h.Status); err != nil {
+			return nil, err
+		}
+		h.Created, h.Updated = time.Unix(c, 0), time.Unix(u, 0)
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// HelpRequests lists requests: open ones first, newest first.
+func (s *store) HelpRequests(ctx context.Context) ([]HelpRequest, error) {
+	return s.helpRequestsWhere(ctx, "1 = 1", "ORDER BY status = 'open' DESC, updated_at DESC, id DESC LIMIT 200")
+}
+
+// HelpRequestsSince lists requests made or changed since a time, oldest first.
+func (s *store) HelpRequestsSince(ctx context.Context, since time.Time) ([]HelpRequest, error) {
+	return s.helpRequestsWhere(ctx, "updated_at >= ?", "ORDER BY created_at, id", since.Unix())
+}
+
+// MarkHelpRequest resolves or reopens a request.
+func (s *store) MarkHelpRequest(ctx context.Context, id int64, status string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE help_requests SET status = ?, seen = 1 WHERE id = ?", status, id)
+	return err
+}
+
+// UnseenHelpRequest says whether a request waits for the parents to open Nálezy.
+func (s *store) UnseenHelpRequest(ctx context.Context) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM help_requests WHERE seen = 0").Scan(&n)
+	return n > 0, err
+}
+
+// MarkHelpRequestsSeen is called when the findings page is opened.
+func (s *store) MarkHelpRequestsSeen(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE help_requests SET seen = 1 WHERE seen = 0")
+	return err
 }

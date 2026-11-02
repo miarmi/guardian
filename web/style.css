@@ -174,7 +174,8 @@ blockquote .who { display: block; font-size: 0.85rem; font-weight: 600; color: v
 .devices .device-name { flex: 1 1 0; min-width: 0; }
 .devices .this-device { display: block; font-size: 0.85rem; color: var(--muted); }
 .help-chip { background: var(--accent); color: var(--accent-text); }
-.child-message { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-radius: 0.4rem; background: var(--ok-bg); overflow-wrap: anywhere; }
+.findings.requests { margin-bottom: 1rem; }
+.child-message { white-space: pre-line; margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-radius: 0.4rem; background: var(--ok-bg); overflow-wrap: anywhere; }
 .contacts { margin-top: 2rem; padding: 1rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); }
 .contacts h2 { font-size: 1rem; margin: 0 0 0.5rem; }
 .contacts ul { margin: 0; padding-left: 1.1rem; list-style: disc; display: block; }

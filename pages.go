@@ -30,6 +30,8 @@ func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 			name = chat
 		}
 		o.Alert = a.lang.T("help_banner", sit, name)
+	} else if ok, _ := a.store.UnseenHelpRequest(ctx); ok {
+		o.Alert = a.lang.T("help_request")
 	} else if sit, name, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
 		if name == "" {
 			name = chat
@@ -74,6 +76,8 @@ type settingsData struct {
 	MailResult  string
 	MailOK      bool
 	MailTyped   *mailSettings // the form as typed, when it had a mistake
+	HelpResult  string        // after "Poslat dítěti odkaz pro pomoc"
+	HelpOK      bool
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +117,7 @@ func (a *App) renderSettings(w http.ResponseWriter, r *http.Request, d settingsD
 	d.Lang, d.Version = a.lang.code, a.version
 	d.Mail = a.mailView(r.Context(), r)
 	d.Mail.Result, d.Mail.ResultOK = d.MailResult, d.MailOK
+	d.Mail.HelpResult, d.Mail.HelpOK = d.HelpResult, d.HelpOK
 	if d.MailTyped != nil {
 		d.Mail.M = *d.MailTyped
 	}
@@ -292,10 +297,6 @@ func situationFromForm(r *http.Request) (Situation, bool) {
 		Sensitivity: f.Get("sensitivity"),
 		Action:      f.Get("action"),
 		Enabled:     f.Get("enabled") == "1",
-		Recipients:  f.Get("recipients"),
-	}
-	if x.Recipients != "parents" && x.Recipients != "child" {
-		x.Recipients = "both"
 	}
 	ok := x.Name != "" && x.Description != "" && utf8.RuneCountInString(x.Name) <= 80 &&
 		utf8.RuneCountInString(x.Description) <= 1000 && sensitivities[x.Sensitivity] && actions[x.Action]
@@ -379,6 +380,7 @@ type findingsData struct {
 	Lang     string
 	Version  string
 	Findings []Finding
+	Requests []HelpRequest // the child's requests through the help link (criterion 30)
 }
 
 func (a *App) findingsPage(w http.ResponseWriter, r *http.Request) {
@@ -387,10 +389,16 @@ func (a *App) findingsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	a.render(w, a.pages["findings"], http.StatusOK, findingsData{Lang: a.lang.code, Version: a.version, Findings: fs})
-	// Opening the page counts as opening the findings (criteria 18, 26).
+	reqs, err := a.store.HelpRequests(r.Context())
+	if err != nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	a.render(w, a.pages["findings"], http.StatusOK, findingsData{Lang: a.lang.code, Version: a.version, Findings: fs, Requests: reqs})
+	// Opening the page counts as opening the findings (criteria 18, 26, 30).
 	_ = a.store.MarkFindingsSeen(r.Context())
 	_ = a.store.MarkHelpSeen(r.Context())
+	_ = a.store.MarkHelpRequestsSeen(r.Context())
 }
 
 func (a *App) markFinding(w http.ResponseWriter, r *http.Request) {
@@ -405,6 +413,20 @@ func (a *App) markFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.store.MarkFinding(r.Context(), id, status); err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/findings", http.StatusSeeOther)
+}
+
+func (a *App) markHelpRequest(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	status := map[string]string{"resolved": "resolved", "open": "open"}[r.PathValue("status")]
+	if err != nil || status == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	if err := a.store.MarkHelpRequest(r.Context(), id, status); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}

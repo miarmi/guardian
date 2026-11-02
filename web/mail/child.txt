@@ -6,8 +6,12 @@
 {{.L.T "fin_in_chat" .F.ChatLabel}}
 {{.F.Reason}}
 
-{{if .ParentsKnow}}{{.L.T "child_button_hint"}}{{else}}{{.L.T "child_hint_secret"}}{{end}}
+{{.L.T "child_parents_know"}}
+{{.L.T "child_button_hint"}}
 {{.L.T "child_button"}}: {{.Link}}
+
+{{.L.T "child_other_intro"}}
+{{.L.T "child_other_link"}}: {{.HelpLink}}
 
 {{range .Contacts}}{{.}}
 {{end}}

@@ -153,7 +153,7 @@ func newApp(st *store, wa connector, cfg Config) *App {
 		"list":  func(v ...string) []string { return v },
 		"clock": func(t time.Time) string { return t.In(zone).Format("15:04") },
 		"newSituation": func() Situation {
-			return Situation{Sensitivity: "medium", Action: "digest", Enabled: true, Recipients: "both"}
+			return Situation{Sensitivity: "medium", Action: "digest", Enabled: true}
 		},
 		"linkify": linkify,
 	}
@@ -224,6 +224,10 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /kid/style.css", a.kidStyle)
 	mux.HandleFunc("GET /kid/{token}", a.kidPage)
 	mux.HandleFunc("POST /kid/{token}", a.kidAsk)
+	mux.HandleFunc("GET /kid/help/{token}", a.helpPage)
+	mux.HandleFunc("POST /kid/help/{token}", a.helpAsk)
+	mux.HandleFunc("POST /requests/{id}/{status}", a.markHelpRequest)
+	mux.HandleFunc("POST /settings/helplink", a.sendHelpLinkHandler)
 	mux.HandleFunc("GET /push/key", a.pushKey)
 	mux.HandleFunc("POST /push/subscribe", a.pushSubscribe)
 	mux.HandleFunc("POST /push/devices/{id}/delete", a.pushRemove)

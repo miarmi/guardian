@@ -17,6 +17,35 @@
     <h1>{{t "fin_title"}}</h1>
     <p class="intro">{{t "fin_intro"}}</p>
   </header>
+  {{if .Requests}}
+  <ul class="findings requests" aria-label="{{t "help_label"}}">
+    {{range .Requests}}
+    <li class="finding{{if ne .Status "open"}} closed{{else}} serious{{end}}">
+      {{if eq .Status "open"}}
+      <div class="finding-head">
+        <span class="sit-name">{{t "help_label"}}</span>
+      </div>
+      <p class="chat-meta">{{when .Updated}}</p>
+      {{if .Message}}<p class="child-message"><strong>{{t "child_message_label"}}</strong> {{.Message}}</p>{{end}}
+      <div class="choices">
+        <form method="post" action="/requests/{{.ID}}/resolved"><button type="submit">{{t "fin_resolved"}}</button></form>
+      </div>
+      {{else}}
+      <details>
+        <summary>
+          <span class="sit-name">{{t "help_label"}}</span>
+          <span class="sit-meta">{{when .Updated}} · {{t "fin_marked_resolved"}}</span>
+        </summary>
+        {{if .Message}}<p class="child-message"><strong>{{t "child_message_label"}}</strong> {{.Message}}</p>{{end}}
+        <div class="choices">
+          <form method="post" action="/requests/{{.ID}}/open"><button type="submit" class="secondary">{{t "fin_reopen"}}</button></form>
+        </div>
+      </details>
+      {{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
   {{if .Findings}}
   <ul class="findings" aria-label="{{t "fin_title"}}">
     {{range .Findings}}

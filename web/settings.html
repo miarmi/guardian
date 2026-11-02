@@ -130,6 +130,18 @@
       </fieldset>
     </form>
   </section>
+
+  <section id="helplink" aria-labelledby="helplink-heading" class="settings-section">
+    <h2 id="helplink-heading">{{t "helplink_title"}}</h2>
+    {{if .Mail.HelpResult}}<p class="status-line scroll-here{{if .Mail.HelpOK}} ok{{else}} warn{{end}}" role="status">{{.Mail.HelpResult}}</p>{{end}}
+    <p>{{if .Mail.HelpUntil}}{{t "helplink_valid" .Mail.HelpUntil}}{{else}}{{t "helplink_none"}}{{end}}</p>
+    <form method="post" action="/settings/helplink">
+      <fieldset{{if not .Available}} disabled{{end}}>
+      <button type="submit" class="secondary">{{t "helplink_send"}}</button>
+      <p class="note">{{t "helplink_hint"}}</p>
+      </fieldset>
+    </form>
+  </section>
 </main>
 <footer>{{t "version"}}: {{.Version}}</footer>
 <script src="/static/settings.js"></script>

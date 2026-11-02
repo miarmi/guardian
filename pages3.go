@@ -24,6 +24,7 @@ type kidData struct {
 	Token         string
 	HelplineLabel string
 	HelplineTel   string
+	Personal      bool // the help link of criterion 30, not about a finding
 }
 
 func (a *App) kidPage(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +163,9 @@ type mailView struct {
 	ResultOK   bool
 	Saved      bool
 	Devices    []PushDevice
+	HelpUntil  string // until when the child's help link works, "" without one
+	HelpResult string
+	HelpOK     bool
 }
 
 func (a *App) mailView(ctx context.Context, r *http.Request) mailView {
@@ -170,6 +174,9 @@ func (a *App) mailView(ctx context.Context, r *http.Request) mailView {
 		Saved: r.URL.Query().Get("mailsaved") == "1", PushSent: r.URL.Query().Get("pushtest") == "1"}
 	v.M.AppSecret, v.M.Password = "", ""
 	v.Devices, _ = a.store.PushDevices(ctx)
+	if link, until, _ := a.nt.helpLink(ctx, false); link != "" {
+		v.HelpUntil = a.lang.date(until.In(a.zone))
+	}
 	return v
 }
 
@@ -255,4 +262,66 @@ func (a *App) testMailHandler(w http.ResponseWriter, r *http.Request) {
 		d.MailResult, d.MailOK = a.lang.T("mail_ok"), true
 	}
 	a.renderSettings(w, r, d)
+}
+
+// sendHelpLinkHandler is "Poslat dítěti odkaz pro pomoc" (criterion 30).
+func (a *App) sendHelpLinkHandler(w http.ResponseWriter, r *http.Request) {
+	if a.an == nil {
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		return
+	}
+	d := settingsData{S: a.an.settings(r.Context())}
+	if err := a.nt.sendHelpLink(r.Context()); err != nil {
+		d.HelpResult = a.lang.T("mail_bad", a.lang.explain(err))
+	} else {
+		d.HelpResult, d.HelpOK = a.lang.T("mail_ok"), true
+	}
+	a.renderSettings(w, r, d)
+}
+
+// --- the child's personal help page (criterion 30) ---
+
+func (a *App) helpPage(w http.ResponseWriter, r *http.Request) {
+	a.renderHelp(w, r, false)
+}
+
+func (a *App) renderHelp(w http.ResponseWriter, r *http.Request, thanks bool) {
+	d := kidData{Lang: a.lang.code, Contacts: a.lang.contacts, Thanks: thanks, Personal: true,
+		HelplineLabel: a.lang.helplineLabel, HelplineTel: a.lang.helplineTel}
+	token := r.PathValue("token")
+	if a.nt.checkHelpToken(r.Context(), token) {
+		d.Valid, d.Token = true, token
+	}
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex")
+	status := http.StatusOK
+	if !d.Valid {
+		status = http.StatusNotFound
+	}
+	a.render(w, a.pages["kid"], status, d)
+}
+
+func (a *App) helpAsk(w http.ResponseWriter, r *http.Request) {
+	if !a.nt.checkHelpToken(r.Context(), r.PathValue("token")) {
+		a.renderHelp(w, r, false)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	msg := strings.TrimSpace(r.PostForm.Get("message"))
+	if utf8.RuneCountInString(msg) > 1000 {
+		msg = string([]rune(msg)[:1000])
+	}
+	_, isNew, err := a.store.AddHelpRequest(r.Context(), msg)
+	if err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	if isNew {
+		a.nt.onHelpRequest(context.WithoutCancel(r.Context()))
+	}
+	a.renderHelp(w, r, true)
 }

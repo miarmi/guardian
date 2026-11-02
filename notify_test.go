@@ -112,7 +112,19 @@ func outbox(t *testing.T, do func(string, string, url.Values) *httptest.Response
 	return out
 }
 
-func TestChildHearsFirstAndCanAskForHelp(t *testing.T) {
+// childMails returns the e-mails to the child, newest first.
+func childMails(t *testing.T, do func(string, string, url.Values) *httptest.ResponseRecorder) []outboxItem {
+	t.Helper()
+	var out []outboxItem
+	for _, b := range outbox(t, do) {
+		if b.Kind == "email" && b.To == "dite@example.cz" {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+func TestParentsFirstThenChildCanAskForHelp(t *testing.T) {
 	a, do := practiceApp(t)
 	a.nt.baseURL = "https://guardian.example"
 	do("POST", "/settings", url.Values{"type": {"practice"}})
@@ -120,31 +132,35 @@ func TestChildHearsFirstAndCanAskForHelp(t *testing.T) {
 	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"c"}, "chat_name": {"Kuba"}, "sender_name": {"Kuba"}, "text": {"tajemství zpráva [Výhrůžky]"}})
 	do("POST", "/dev/analysis/run", nil)
 	box := outbox(t, do)
-	var mail, push *outboxItem
-	for i := range box {
-		switch box[i].Kind {
-		case "email":
-			mail = &box[i]
-		case "push":
-			push = &box[i]
-		}
+	if len(box) != 1 || box[0].Kind != "push" || box[0].Subject != "Guardian: Výhrůžky" || box[0].Text != "v chatu Kuba" {
+		t.Fatalf("after the first look only the parents' push: %+v", box)
 	}
-	if push == nil || push.Subject != "Guardian: Výhrůžky" || push.Text != "v chatu Kuba" {
-		t.Fatalf("push: %+v", push)
+	// The next look sends the child's e-mail.
+	do("POST", "/dev/analysis/run", nil)
+	mails := childMails(t, do)
+	if len(mails) != 1 {
+		t.Fatalf("child mails after the second look: %d", len(mails))
 	}
-	if mail == nil || mail.To != "dite@example.cz" || mail.Subject != "Guardian něco našel" ||
-		!strings.Contains(mail.Text, "Linka bezpečí: 116 111") || strings.Contains(mail.Text, "tajemství") || len(mail.Links) != 1 {
+	mail := mails[0]
+	if mail.Subject != "Guardian něco našel" || !strings.Contains(mail.Text, "Rodiče o tom už vědí.") ||
+		!strings.Contains(mail.Text, "Linka bezpečí: 116 111") || strings.Contains(mail.Text, "tajemství") || len(mail.Links) != 2 ||
+		!strings.Contains(mail.Links[1], "/kid/help/") || !strings.Contains(mail.Text, "Potřebuju pomoc s něčím jiným") {
 		t.Fatalf("mail: %+v", mail)
 	}
+	do("POST", "/dev/analysis/run", nil)
+	if n := len(childMails(t, do)); n != 1 {
+		t.Fatalf("child got %d e-mails, want 1", n)
+	}
 	link := strings.TrimPrefix(mail.Links[0], "https://guardian.example")
+	before := len(outbox(t, do))
 	// Opening the link changes nothing.
 	page := do("GET", link, nil).Body.String()
-	if !strings.Contains(page, "Ano, ať to řeší rodiče") || len(outbox(t, do)) != len(box) || strings.Contains(do("GET", "/", nil).Body.String(), "Dítě žádá o pomoc") {
+	if !strings.Contains(page, "Ano, potřebuju pomoc") || len(outbox(t, do)) != before || strings.Contains(do("GET", "/", nil).Body.String(), "Dítě žádá o pomoc") {
 		t.Fatal("opening the link acted, or the button is missing")
 	}
 	// Pressing the button does.
 	page = do("POST", link, url.Values{"message": {"je to fakt zlý"}}).Body.String()
-	if !strings.Contains(page, "Díky. Rodiče to teď uvidí.") {
+	if !strings.Contains(page, "Díky. Rodiče teď vědí, že potřebuješ pomoc.") {
 		t.Fatal("no thanks")
 	}
 	if b := outbox(t, do)[0]; b.Kind != "push" || b.Text != "Dítě žádá o pomoc: Výhrůžky v chatu Kuba" {
@@ -168,43 +184,127 @@ func TestChildHearsFirstAndCanAskForHelp(t *testing.T) {
 	}
 }
 
-func TestRecipientsAndDigest(t *testing.T) {
+func TestFalseAlarmBeforeTheChildHears(t *testing.T) {
 	a, do := practiceApp(t)
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
-	sits, _ := a.store.Situations(context.Background())
-	var threats Situation
-	for _, s := range sits {
-		if s.Name == "Výhrůžky" {
-			threats = s
-		}
-	}
-	// Parents only: no mail to the child, push still.
-	do("POST", "/situations/"+itoa(threats.ID), url.Values{"name": {threats.Name}, "description": {threats.Description},
-		"sensitivity": {"medium"}, "action": {"alert"}, "enabled": {"1"}, "recipients": {"parents"}})
-	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"p"}, "chat_name": {"P"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"x"}, "chat_name": {"X"}, "text": {"[Výhrůžky]"}})
 	do("POST", "/dev/analysis/run", nil)
-	for _, b := range outbox(t, do) {
-		if b.Kind == "email" {
-			t.Fatalf("child got mail for a parents-only situation: %+v", b)
-		}
+	fs, _ := a.store.Findings(context.Background())
+	do("POST", "/findings/"+itoa(fs[0].ID)+"/false_alarm", nil)
+	do("POST", "/dev/analysis/run", nil)
+	if n := len(childMails(t, do)); n != 0 {
+		t.Fatalf("child got %d e-mails about a false alarm", n)
+	}
+}
+
+func TestDigestGoesToParentsThenTheChildHears(t *testing.T) {
+	_, do := practiceApp(t)
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
+	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"p"}, "chat_name": {"P"}, "text": {"[Urážky a ponižování]"}})
+	do("POST", "/dev/analysis/run", nil)
+	do("POST", "/dev/analysis/run", nil)
+	if len(outbox(t, do)) != 0 {
+		t.Fatalf("a digest situation told someone before the digest: %+v", outbox(t, do))
 	}
 	do("POST", "/dev/digest/run", nil)
-	var toParents, toChild *outboxItem
 	box := outbox(t, do)
-	for i := range box {
-		if box[i].Kind == "email" && box[i].To == "mama@example.cz" {
-			toParents = &box[i]
+	var digests, child int
+	for _, b := range box {
+		if b.Kind != "email" {
+			continue
 		}
-		if box[i].Kind == "email" && box[i].To == "dite@example.cz" {
-			toChild = &box[i]
+		if strings.HasPrefix(b.Subject, "Guardian: týden ") {
+			digests++
+			if b.To != "mama@example.cz" || !strings.Contains(b.Text, "Urážky a ponižování") {
+				t.Fatalf("digest: %+v", b)
+			}
+		}
+		if b.To == "dite@example.cz" {
+			child++
+			if b.Subject != "Guardian něco našel" {
+				t.Fatalf("child got %q", b.Subject)
+			}
 		}
 	}
-	if toParents == nil || !strings.HasPrefix(toParents.Subject, "Guardian: týden ") || !strings.Contains(toParents.Text, "Výhrůžky") {
-		t.Fatalf("parents' digest: %+v", toParents)
+	if digests != 1 || child != 1 {
+		t.Fatalf("digests %d (want 1, parents only), child mails %d (want 1)", digests, child)
 	}
-	if toChild == nil || strings.Contains(toChild.Text, "Výhrůžky") || !strings.Contains(toChild.Text, "Tento týden Guardian nic nenašel.") {
-		t.Fatalf("child's digest: %+v", toChild)
+	// The child's e-mail came after the digest.
+	if box[0].To != "dite@example.cz" {
+		t.Fatal("the child heard before the parents' digest")
+	}
+}
+
+func TestPersonalHelpLink(t *testing.T) {
+	a, do := practiceApp(t)
+	a.nt.baseURL = "https://guardian.example"
+	do("POST", "/settings", url.Values{"type": {"practice"}})
+	if !strings.Contains(do("GET", "/settings", nil).Body.String(), "Dítě zatím odkaz nemá.") {
+		t.Fatal("no-link state missing")
+	}
+	if !strings.Contains(do("POST", "/settings/helplink", nil).Body.String(), "E-mail neodešel: nejdřív vyplň e-mail dítěte") {
+		t.Fatal("missing child e-mail not said")
+	}
+	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
+	page := do("POST", "/settings/helplink", nil).Body.String()
+	if !strings.Contains(page, "E-mail odešel.") || !strings.Contains(page, "Odkaz platí do ") {
+		t.Fatal("sending the link not confirmed")
+	}
+	mails := childMails(t, do)
+	if len(mails) != 1 || mails[0].Subject != "Guardian: když budeš potřebovat pomoc" || !strings.Contains(mails[0].Text, "Linka bezpečí") {
+		t.Fatalf("help link mail: %+v", mails)
+	}
+	link := strings.TrimPrefix(mails[0].Links[0], "https://guardian.example")
+	before := len(outbox(t, do))
+	if p := do("GET", link, nil).Body.String(); !strings.Contains(p, "Co se děje?") || !strings.Contains(p, "Potřebuju pomoc") || len(outbox(t, do)) != before {
+		t.Fatal("help page missing or opening it acted")
+	}
+	if !strings.Contains(do("POST", link, url.Values{"message": {"ve škole mi berou svačinu"}}).Body.String(), "Díky. Rodiče teď vědí, že potřebuješ pomoc.") {
+		t.Fatal("no thanks")
+	}
+	push := outbox(t, do)[0]
+	if push.Kind != "push" || push.Text != "Dítě žádá o pomoc" || strings.Contains(push.Text+push.Subject, "svačin") {
+		t.Fatalf("push: %+v", push)
+	}
+	if !strings.Contains(do("GET", "/", nil).Body.String(), "Dítě žádá o pomoc") {
+		t.Fatal("no banner")
+	}
+	// A second request within 10 minutes adds to the first, without a push.
+	do("POST", link, url.Values{"message": {"a dneska zase"}})
+	if n := len(outbox(t, do)); n != before+1 {
+		t.Fatalf("second request pushed again (%d items)", n)
+	}
+	fin := do("GET", "/findings", nil).Body.String()
+	if !strings.Contains(fin, "ve škole mi berou svačinu") || !strings.Contains(fin, "a dneska zase") || strings.Count(fin, "/requests/") != 1 {
+		t.Fatal("request not in Nálezy once with both messages")
+	}
+	if strings.Contains(do("GET", "/", nil).Body.String(), "Dítě žádá o pomoc") {
+		t.Fatal("banner stays after Nálezy was opened")
+	}
+	reqs, _ := a.store.HelpRequests(context.Background())
+	do("POST", "/requests/"+itoa(reqs[0].ID)+"/resolved", nil)
+	if r, _ := a.store.HelpRequests(context.Background()); r[0].Status != "resolved" {
+		t.Fatal("request not resolved")
+	}
+	// The digest lists the request.
+	do("POST", "/dev/digest/run", nil)
+	if d := outbox(t, do)[0]; !strings.Contains(d.Text, "ve škole mi berou svačinu") {
+		t.Fatalf("digest without the request: %+v", d)
+	}
+	// A new link retires the old one.
+	do("POST", "/settings/helplink", nil)
+	if r := do("GET", link, nil); r.Code != http.StatusNotFound || !strings.Contains(r.Body.String(), "Tenhle odkaz už neplatí.") {
+		t.Fatal("old link still works")
+	}
+	newLink := strings.TrimPrefix(childMails(t, do)[0].Links[0], "https://guardian.example")
+	if do("GET", newLink, nil).Code != http.StatusOK {
+		t.Fatal("new link refused")
+	}
+	// A finding's link is not a help link, and the other way round.
+	if do("GET", strings.Replace(newLink, "/kid/help/", "/kid/", 1), nil).Code != http.StatusNotFound {
+		t.Fatal("help link accepted as a finding link")
 	}
 }
 
@@ -263,6 +363,7 @@ func TestChildMailFailureIsShownAndRetried(t *testing.T) {
 	do("POST", "/dev/mail/unreachable", url.Values{"on": {"1"}})
 	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"f"}, "chat_name": {"F"}, "text": {"[Výhrůžky]"}})
 	do("POST", "/dev/analysis/run", nil)
+	do("POST", "/dev/analysis/run", nil)
 	if !strings.Contains(do("GET", "/", nil).Body.String(), "E-mail dítěti neodešel: zkušební pošta je nedostupná") {
 		t.Fatal("failure not on the overview")
 	}
@@ -287,6 +388,7 @@ func TestChildSeesResolvedAndBadAddressesAreSaid(t *testing.T) {
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	do("POST", "/settings/mail", url.Values{"mail_type": {"practice"}, "child_email": {"dite@example.cz"}, "parent_emails": {"mama@example.cz"}})
 	do("POST", "/dev/whatsapp/message", url.Values{"chat": {"r"}, "chat_name": {"R"}, "text": {"[Výhrůžky]"}})
+	do("POST", "/dev/analysis/run", nil)
 	do("POST", "/dev/analysis/run", nil)
 	var link string
 	for _, b := range outbox(t, do) {
