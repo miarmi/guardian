@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -274,11 +275,17 @@ func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
 	for _, c := range chats {
 		seen[c.Name]++
 	}
+	nth := map[string]int{}
 	for i, c := range chats {
-		if c.Name != "" && seen[c.Name] > 1 && !c.IsGroup {
-			if user, _, ok := strings.Cut(c.JID, "@"); ok && len(user) > 3 {
-				chats[i].Suffix = "…" + user[len(user)-3:]
-			}
+		if c.Name == "" || seen[c.Name] < 2 {
+			continue
+		}
+		nth[c.Name]++
+		user, _, _ := strings.Cut(c.JID, "@")
+		if !c.IsGroup && len(user) > 3 && strings.Trim(user, "0123456789") == "" {
+			chats[i].Suffix = "…" + user[len(user)-3:]
+		} else {
+			chats[i].Suffix = "(" + strconv.Itoa(nth[c.Name]) + ")"
 		}
 	}
 	a.render(w, a.index, http.StatusOK, indexData{

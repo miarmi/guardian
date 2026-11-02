@@ -211,8 +211,8 @@ func TestTestUsesTheFormAndKeepsIt(t *testing.T) {
 	do("POST", "/settings", url.Values{"type": {"practice"}})
 	// Anthropic without a key: tested as typed, not as saved; form kept.
 	page := do("POST", "/settings/test", url.Values{"type": {"anthropic"}}).Body.String()
-	if strings.Contains(page, "Model odpovídá.") || !strings.Contains(page, "Model neodpovídá") {
-		t.Fatal("tested the saved model instead of the form")
+	if strings.Contains(page, "Model odpovídá.") || !strings.Contains(page, "Chybí klíč.") || strings.Contains(page, "Vyzkoušeno:") {
+		t.Fatal("tested the saved model instead of the form, or claimed a try")
 	}
 	if !strings.Contains(page, `<option value="anthropic" selected>`) {
 		t.Fatal("form not kept")
@@ -297,5 +297,24 @@ func TestErrorsInPlainWords(t *testing.T) {
 		if got := cs.explain(errors.New(in)); got != want {
 			t.Errorf("%q -> %q", in, got)
 		}
+	}
+}
+
+func TestSlowAddressAnswersThePage(t *testing.T) {
+	hang := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-hang }))
+	defer srv.Close()
+	defer close(hang)
+	old := testTimeout
+	testTimeout = 300 * time.Millisecond
+	defer func() { testTimeout = old }()
+	_, do := practiceApp(t)
+	start := time.Now()
+	page := do("POST", "/settings/test", url.Values{"type": {"openai"}, "address": {srv.URL + "/v1"}, "model": {"llama3"}}).Body.String()
+	if time.Since(start) > 5*time.Second {
+		t.Fatal("test did not give up in time")
+	}
+	if !strings.Contains(page, "Model neodpovídá: adresa neodpovídá (vypršel čas)") || !strings.Contains(page, `value="llama3"`) {
+		t.Fatal("no timeout message or the form was lost")
 	}
 }

@@ -83,7 +83,7 @@ var languages = map[string]*lang{
 			"t_anthropic":          "Anthropic",
 			"t_openai":             "OpenAI-compatible",
 			"t_practice":           "Practice",
-			"t_openai_hint":        "OpenAI, Mistral, OpenRouter, Ollama, LM Studio… Give the address up to /v1.",
+			"t_openai_hint":        "OpenAI, Mistral, OpenRouter, Ollama, LM Studio… Address including /v1, e.g. https://api.openai.com/v1 or http://192.168.1.10:11434/v1 (Ollama).",
 			"save":                 "Save",
 			"test":                 "Test",
 			"saved":                "Saved.",
@@ -147,6 +147,13 @@ var languages = map[string]*lang{
 			"err_server":           "the provider has a problem (%s)",
 			"err_unreachable":      "the address doesn't answer",
 			"err_unreadable":       "the model's answer could not be read",
+			"err_timeout":          "the address doesn't respond (timed out)",
+			"miss_key":             "The key is missing.",
+			"miss_address":         "The address is missing.",
+			"miss_model":           "The model is missing.",
+			"no_key_reason":        "The model key is missing.",
+			"dest_pending":         "Fill in the address to see where the message text goes.",
+			"sit_added":            "Added.",
 		},
 		name:       "English",
 		situations: defaultSituationsEN,
@@ -231,7 +238,7 @@ var languages = map[string]*lang{
 			"t_anthropic":          "Anthropic",
 			"t_openai":             "OpenAI-kompatibilní",
 			"t_practice":           "Zkušební",
-			"t_openai_hint":        "OpenAI, Mistral, OpenRouter, Ollama, LM Studio… Adresu zadej až po /v1.",
+			"t_openai_hint":        "OpenAI, Mistral, OpenRouter, Ollama, LM Studio… Adresa včetně /v1, např. https://api.openai.com/v1 nebo http://192.168.1.10:11434/v1 (Ollama).",
 			"save":                 "Uložit",
 			"test":                 "Vyzkoušet",
 			"saved":                "Uloženo.",
@@ -295,6 +302,13 @@ var languages = map[string]*lang{
 			"err_server":           "poskytovatel má potíže (%s)",
 			"err_unreachable":      "adresa neodpovídá",
 			"err_unreadable":       "odpověď modelu nešla přečíst",
+			"err_timeout":          "adresa neodpovídá (vypršel čas)",
+			"miss_key":             "Chybí klíč.",
+			"miss_address":         "Chybí adresa.",
+			"miss_model":           "Chybí model.",
+			"no_key_reason":        "Chybí klíč k modelu.",
+			"dest_pending":         "Kam se text zpráv posílá, uvidíš po vyplnění adresy.",
+			"sit_added":            "Přidáno.",
 		},
 		name:       "Czech",
 		situations: defaultSituationsCS,
@@ -408,7 +422,12 @@ func (l *lang) explain(err error) string {
 			return l.T("err_server", c)
 		}
 	}
-	for _, s := range []string{"timeout", "deadline exceeded", "no such host", "connection refused", "network is unreachable", "connection reset", "eof"} {
+	for _, s := range []string{"timeout", "deadline exceeded"} {
+		if strings.Contains(low, s) {
+			return l.T("err_timeout")
+		}
+	}
+	for _, s := range []string{"no such host", "connection refused", "network is unreachable", "connection reset", "eof"} {
 		if strings.Contains(low, s) {
 			return l.T("err_unreachable")
 		}

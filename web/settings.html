@@ -20,14 +20,15 @@
   {{if not .Available}}
   <p class="note">{{t "an_preview"}}</p>
   {{else}}
-  {{if .Saved}}<p class="status-line ok" role="status">{{t "saved"}}</p>{{end}}
-  {{if .Forgot}}<p class="status-line caution" role="status">{{t "key_forgotten"}}</p>{{end}}
-  {{if .NoKey}}<p class="status-line caution" role="status">{{t "nokey_warn"}}</p>{{end}}
+  {{if .Saved}}<p class="status-line ok transient" role="status">{{t "saved"}}</p>{{end}}
+  {{if .Forgot}}<p class="status-line caution transient" role="status">{{t "key_forgotten"}}</p>{{end}}
+  {{if .NoKey}}<p class="status-line caution transient" role="status">{{t "nokey_warn"}}</p>{{end}}
   {{if .Result}}<p class="status-line{{if .ResultOK}} ok{{else}} warn{{end}}" role="status">{{.Result}}</p>{{if .Tried}}<p class="note">{{.Tried}}</p>{{end}}{{end}}
   <form method="post" action="/settings" class="form" id="settings-form"
         data-anthropic-address="https://api.anthropic.com" data-anthropic-model="claude-sonnet-5-5"
         data-goes-to="{{t "goes_to" "%s"}}" data-stays-home="{{t "stays_home"}}" data-testing="{{t "testing"}}"
-        data-key-host="{{if .KeyHint}}{{.S.Type}} {{.S.Address}}{{end}}" data-key-forgotten="{{t "key_forgotten"}}">
+        data-key-host="{{if .KeyHint}}{{.S.Type}} {{.S.Address}}{{end}}" data-key-forgotten="{{t "key_forgotten"}}"
+        data-dest-pending="{{t "dest_pending"}}">
     <label for="type">{{t "f_type"}}</label>
     <select id="type" name="type">
       <option value="anthropic"{{if eq .S.Type "anthropic"}} selected{{end}}>{{t "t_anthropic"}}</option>

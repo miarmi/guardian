@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,6 +18,7 @@ type overviewAnalysis struct {
 	Destination string // host the text goes to, "" when it stays home
 	OpenCount   int
 	Alert       string // banner text, "" when none
+	Reason      string // why there is no model, when it is just the key
 }
 
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
@@ -34,8 +36,11 @@ func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	}
 	o.Available = true
 	o.State = a.an.state(ctx)
+	m := a.an.settings(ctx)
 	if !o.State.NoModel {
-		o.Destination = a.an.settings(ctx).destination()
+		o.Destination = m.destination()
+	} else if m.Type == modelAnthropic && m.Key == "" {
+		o.Reason = a.lang.T("no_key_reason")
 	}
 	return o
 }
@@ -155,12 +160,13 @@ func (a *App) saveSettings(w http.ResponseWriter, r *http.Request) {
 	newKey := strings.TrimSpace(r.PostForm.Get("key"))
 	saved := a.an.settings(r.Context())
 	forgot := newKey == "" && saved.Key != "" && !sameEndpoint(saved, m)
+	tellForgot := forgot && m.Type != modelPractice // the practice model has no key to ask for
 	if err := a.an.saveSettings(r.Context(), m, newKey, forgot); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
 	dest := "/settings?saved=1"
-	if forgot {
+	if tellForgot {
 		dest += "&forgot=1"
 	}
 	if m.Type == modelAnthropic && !a.an.settings(r.Context()).ready() {
@@ -190,14 +196,18 @@ func (a *App) testModel(w http.ResponseWriter, r *http.Request) {
 		m.Key = saved.Key
 	}
 	d := settingsData{S: m}
-	if m.Type != modelPractice {
-		d.Tried = a.lang.T("tried", m.Model, hostOf(m.Address))
-	}
 	err := a.an.test(r.Context(), m)
-	if err != nil {
+	var miss errMissing
+	switch {
+	case errors.As(err, &miss):
+		d.Result = miss.text // nothing was tried
+	case err != nil:
 		d.Result = a.lang.T("model_bad", a.lang.explain(err))
-	} else {
+	default:
 		d.Result, d.ResultOK = a.lang.T("model_ok"), true
+	}
+	if m.Type != modelPractice && !errors.As(err, &miss) {
+		d.Tried = a.lang.T("tried", m.Model, hostOf(m.Address))
 	}
 	// Testing what is saved also tells the overview how it stands.
 	if m.Type == saved.Type && m.Address == saved.Address && m.Model == saved.Model && m.Key == saved.Key {
@@ -217,6 +227,7 @@ type situationsData struct {
 	Situations []Situation
 	Error      string
 	Saved      int64 // the situation just saved, kept open
+	Added      int64 // the situation just added, opened
 }
 
 func (a *App) situationsPage(w http.ResponseWriter, r *http.Request) {
@@ -230,7 +241,8 @@ func (a *App) renderSituations(w http.ResponseWriter, r *http.Request, status in
 		return
 	}
 	saved, _ := strconv.ParseInt(r.URL.Query().Get("saved"), 10, 64)
-	a.render(w, a.pages["situations"], status, situationsData{Lang: a.lang.code, Version: a.version, Situations: sits, Error: errText, Saved: saved})
+	added, _ := strconv.ParseInt(r.URL.Query().Get("added"), 10, 64)
+	a.render(w, a.pages["situations"], status, situationsData{Lang: a.lang.code, Version: a.version, Situations: sits, Error: errText, Saved: saved, Added: added})
 }
 
 var (
@@ -263,11 +275,13 @@ func (a *App) addSituation(w http.ResponseWriter, r *http.Request) {
 		a.renderSituations(w, r, http.StatusUnprocessableEntity, a.lang.T("sit_incomplete"))
 		return
 	}
-	if err := a.store.AddSituation(r.Context(), x); err != nil {
+	id, err := a.store.AddSituation(r.Context(), x)
+	if err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/situations", http.StatusSeeOther)
+	sid := strconv.FormatInt(id, 10)
+	http.Redirect(w, r, "/situations?added="+sid+"#sit-"+sid, http.StatusSeeOther)
 }
 
 func (a *App) updateSituation(w http.ResponseWriter, r *http.Request) {

@@ -14,6 +14,9 @@
   var keyNote = document.getElementById("key-note");
   var keyNoteText = keyNote ? keyNote.textContent : "";
   var keyFor = d.keyHost; // "type address" the saved key belongs to, "" if none
+  var keyInput = document.getElementById("key");
+  var keyPlaceholder = keyInput ? keyInput.placeholder : "";
+  var dirty = false;
 
   function host(addr) {
     try { return new URL(addr).hostname.toLowerCase(); } catch (e) { return ""; }
@@ -32,15 +35,22 @@
     var h = type.value === "practice" ? "" : host(address.value);
     if (type.value === "practice" || isHome(h)) {
       dest.textContent = d.staysHome;
+    } else if (!h) {
+      dest.textContent = d.destPending;
     } else {
-      dest.textContent = d.goesTo.replace("%s", h || address.value);
+      dest.textContent = d.goesTo.replace("%s", h);
     }
     if (keyNote && keyFor) {
       var parts = keyFor.split(" ");
       var same = parts[0] === type.value && host(parts.slice(1).join(" ")) === host(address.value);
       keyNote.textContent = same ? keyNoteText : d.keyForgotten;
+      keyInput.placeholder = same ? keyPlaceholder : "";
+    }
+    if (dirty) {
+      Array.prototype.forEach.call(document.querySelectorAll(".transient, .status-line[role=status]"), function (el) { el.hidden = true; });
     }
   }
+  form.addEventListener("input", function () { dirty = true; update(); });
   type.addEventListener("change", function () {
     if (type.value === "anthropic") {
       if (!address.value) address.value = d.anthropicAddress;
@@ -49,9 +59,9 @@
       if (address.value === d.anthropicAddress) address.value = "";
       if (model.value === d.anthropicModel) model.value = "";
     }
+    dirty = true;
     update();
   });
-  address.addEventListener("input", update);
   form.addEventListener("submit", function (e) {
     var b = e.submitter;
     if (b && b.id === "test-button") {

@@ -279,10 +279,13 @@ func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error 
 	return nil
 }
 
-func (s *store) AddSituation(ctx context.Context, x Situation) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
+func (s *store) AddSituation(ctx context.Context, x Situation) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin)
 		VALUES (?, ?, ?, ?, ?, 0)`, x.Name, x.Description, x.Sensitivity, x.Action, x.Enabled)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }
 
 func (s *store) UpdateSituation(ctx context.Context, x Situation) error {

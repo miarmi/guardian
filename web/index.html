@@ -53,7 +53,7 @@
   <section aria-labelledby="analysis-heading">
     <h2 id="analysis-heading">{{t "analysis"}}</h2>
     {{with .Analysis}}
-    {{if .State.NoModel}}<p class="status-line warn">{{t "no_model"}} <a href="/settings">{{t "settings_arrow"}}</a></p>
+    {{if .State.NoModel}}<p class="status-line warn">{{t "no_model"}} <a href="/settings">{{t "settings_arrow"}}</a></p>{{if .Reason}}<p class="note">{{.Reason}}</p>{{end}}
     {{else}}
       {{if .State.Error}}<p class="status-line warn">{{t "an_failed" .State.Error}}{{if not .State.NextRun.IsZero}} {{t "next_try" (clock .State.NextRun)}}{{end}} <a href="/settings">{{t "settings_arrow"}}</a></p>
       {{else if .State.Limited}}<p class="status-line caution">{{t "an_limit"}} <a href="/settings">{{t "settings_arrow"}}</a></p>

@@ -14,10 +14,15 @@ import (
 	"time"
 )
 
+// testTimeout bounds Vyzkoušet, well under the web server's write timeout
+// (a variable so tests can shorten it).
+var testTimeout = 10 * time.Second
+
 const (
-	contextMessages = 50  // earlier messages given as context (criterion 15)
-	batchMessages   = 200 // new messages per question, so long histories fit
-	defaultLimit    = 200 // questions per day (criterion 19)
+	askTimeout      = 2 * time.Minute // one question during the hourly look
+	contextMessages = 50              // earlier messages given as context (criterion 15)
+	batchMessages   = 200             // new messages per question, so long histories fit
+	defaultLimit    = 200             // questions per day (criterion 19)
 	analysisEvery   = time.Hour
 )
 
@@ -140,8 +145,8 @@ func (z *analyzer) test(ctx context.Context, m modelSettings) error {
 	if m.Type == modelPractice && z.practice == nil {
 		m.Type = ""
 	}
-	if !m.ready() {
-		return errors.New(z.lang.T("model_incomplete"))
+	if miss := z.missing(m); miss != "" {
+		return errMissing{miss}
 	}
 	if m.Type == modelPractice {
 		return z.practice.check()
@@ -150,7 +155,8 @@ func (z *analyzer) test(ctx context.Context, m modelSettings) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	// Well under the web server's write timeout, so the page always answers.
+	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
 	answer, err := cm.Ask(ctx, "Answer with the single word OK.", "Are you there?")
 	if err != nil {
@@ -269,7 +275,9 @@ func (z *analyzer) lookAt(ctx context.Context, a analyst, m modelSettings, chat 
 		if err := z.spend(ctx, m.Limit); err != nil {
 			return err
 		}
-		found, err := a.Analyze(ctx, info, old, batch, on)
+		askCtx, cancel := context.WithTimeout(ctx, askTimeout)
+		found, err := a.Analyze(askCtx, info, old, batch, on)
+		cancel()
 		if err != nil {
 			return err
 		}
@@ -448,4 +456,24 @@ func (p *practiceModel) Analyze(ctx context.Context, chat chatInfo, old, fresh [
 		}
 	}
 	return res, nil
+}
+
+// errMissing says which field is empty; nothing was tried.
+type errMissing struct{ text string }
+
+func (e errMissing) Error() string { return e.text }
+
+// missing names the first thing that keeps the model from being asked.
+func (z *analyzer) missing(m modelSettings) string {
+	switch {
+	case m.Type == modelPractice || m.ready():
+		return ""
+	case m.Type == modelAnthropic && m.Key == "":
+		return z.lang.T("miss_key")
+	case m.Address == "":
+		return z.lang.T("miss_address")
+	case m.Model == "":
+		return z.lang.T("miss_model")
+	}
+	return z.lang.T("miss_key")
 }
