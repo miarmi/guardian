@@ -15,18 +15,17 @@
 <body>
 <main>
   <header>
-    <h1>Guardian</h1>
-    <p class="env">Environment: {{.EnvText}}</p>
+    <h1>Guardian{{if .Preview}} <span class="chip">Preview: {{.Preview}}</span>{{end}}</h1>
+    <p class="intro">Keeps a copy of the chats on our own server. On the phone it appears as a linked device named Guardian, which can be removed there at any time.</p>
   </header>
 
   <section aria-labelledby="connectors-heading">
     <h2 id="connectors-heading">Connectors</h2>
     <ul class="connectors" aria-label="Connectors">
       <li class="connector">
-        <div class="connector-head">
-          <span class="name">WhatsApp</span>
-          <span class="state{{if .Connector.Connected}} on{{end}}">{{.Connector.StateText}}</span>
-        </div>
+        <div class="name">WhatsApp</div>
+        <div class="state{{if .Connector.Connected}} on{{end}}">{{.Connector.StateText}}</div>
+        {{if .Connector.Note}}<p class="note">{{.Connector.Note}}</p>{{end}}
         {{if .Connector.Available}}
         <div class="actions">
           {{if .Connector.Connected}}
@@ -47,10 +46,11 @@
   <section aria-labelledby="chats-heading">
     <h2 id="chats-heading">Chats</h2>
     {{if .Chats}}
+    <p class="note">Only counts are shown in this phase; messages are not readable here.</p>
     <ul class="chats" aria-label="Chats">
       {{range .Chats}}<li>
-        <span class="chat-name">{{if .Name}}{{.Name}}{{else}}{{.JID}}{{end}}{{if .IsGroup}} <span class="tag">group</span>{{end}}</span>
-        <span class="chat-meta">{{.Count}} {{if eq .Count 1}}message{{else}}messages{{end}} · last {{when .Last}}</span>
+        <span class="chat-name">{{if .Name}}{{.Name}}{{else}}{{.JID}}{{end}}</span>
+        <span class="chat-meta">{{if .IsGroup}}group · {{end}}{{count .Count}} · {{when .Last}}</span>
       </li>
       {{end}}
     </ul>

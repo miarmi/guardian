@@ -102,7 +102,7 @@ func TestPreviewShowsNoConnectButton(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
-	for _, want := range []string{"<title>Guardian</title>", "Connectors", "WhatsApp", textNoPreviews, "Chats", msgNoChats, "Environment: preview: some-preview"} {
+	for _, want := range []string{"<title>Guardian</title>", "Connectors", "WhatsApp", textNoPreviews, "Chats", msgNoChats, "Preview: some-preview"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -114,5 +114,31 @@ func TestPreviewShowsNoConnectButton(t *testing.T) {
 	a.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK || rec.Body.String() != "ok" {
 		t.Fatalf("healthz: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHumanTime(t *testing.T) {
+	zone := time.UTC
+	now := time.Date(2026, 11, 2, 10, 0, 0, 0, zone)
+	cases := map[string]time.Time{
+		"today 09:05":     time.Date(2026, 11, 2, 9, 5, 0, 0, zone),
+		"yesterday 23:59": time.Date(2026, 11, 1, 23, 59, 0, 0, zone),
+		"Fri 30 Oct":      time.Date(2026, 10, 30, 9, 0, 0, 0, zone),
+		"3 Jan":           time.Date(2026, 1, 3, 9, 0, 0, 0, zone),
+		"27 Oct 2025":     time.Date(2025, 10, 27, 9, 0, 0, 0, zone),
+	}
+	for want, at := range cases {
+		if got := humanTime(at, zone, now); got != want {
+			t.Errorf("humanTime(%v) = %q, want %q", at, got, want)
+		}
+	}
+	if got := formatCount(1); got != "1 message" {
+		t.Errorf("formatCount(1) = %q", got)
+	}
+	if got := formatCount(12345); got != "12 345 messages" {
+		t.Errorf("formatCount(12345) = %q", got)
+	}
+	if got := formatNumber("420777123456"); got != "+420 777 123 456" {
+		t.Errorf("formatNumber = %q", got)
 	}
 }

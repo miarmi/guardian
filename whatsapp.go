@@ -40,6 +40,7 @@ type whatsapp struct {
 	state  waState
 	number string // E.164 digits of the linked phone, "" if unknown
 	qr     string // current QR code payload while pairing
+	qrExp  time.Time
 	cancel context.CancelFunc
 }
 
@@ -82,15 +83,16 @@ func (w *whatsapp) newClient(device *wastore.Device) *whatsmeow.Client {
 
 // Status is a snapshot for the pages.
 type waStatus struct {
-	State  waState
-	Number string
-	QR     string
+	State     waState
+	Number    string
+	QR        string
+	QRExpires time.Time
 }
 
 func (w *whatsapp) Status() waStatus {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return waStatus{State: w.state, Number: w.number, QR: w.qr}
+	return waStatus{State: w.state, Number: w.number, QR: w.qr, QRExpires: w.qrExp}
 }
 
 // StartPairing puts a QR code on offer. Safe to call while already pairing.
@@ -130,8 +132,9 @@ func (w *whatsapp) readQR(client *whatsmeow.Client, qrChan <-chan whatsmeow.QRCh
 		switch item.Event {
 		case "code":
 			w.qr = item.Code
+			w.qrExp = time.Now().Add(item.Timeout)
 		case whatsmeow.QRChannelSuccess.Event:
-			w.qr = ""
+			w.qr, w.qrExp = "", time.Time{}
 			// events.Connected finishes the job.
 		default:
 			// timeout or error: back to square one, the page offers a retry.
