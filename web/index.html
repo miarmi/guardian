@@ -15,7 +15,10 @@
 <body>
 <main>
   <header>
-    <h1>Guardian{{if .Preview}} <span class="chip">{{t "preview"}}: {{.Preview}}</span>{{end}}</h1>
+    <div class="title-row">
+      <h1>Guardian</h1>
+      {{if .Preview}}<span class="chip">{{t "preview"}}: {{.Preview}}</span>{{end}}
+    </div>
     <p class="intro">{{t "intro"}}</p>
   </header>
 

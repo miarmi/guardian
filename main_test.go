@@ -171,6 +171,9 @@ func TestCzechPage(t *testing.T) {
 	rec := httptest.NewRecorder()
 	a.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	body := rec.Body.String()
+	if !strings.Contains(body, "<h1>Guardian</h1>") {
+		t.Error("the heading must be exactly Guardian, preview tag outside it")
+	}
 	for _, want := range []string{`<html lang="cs">`, "Konektory", "V náhledu není k dispozici", "Chaty", "Zatím žádné zprávy.", "Náhled: p"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
