@@ -45,6 +45,7 @@
     {{if .Resolved}}<p class="status-line ok">{{t "kid_resolved"}}</p>{{end}}
   {{else}}
     <p class="status-line caution" role="status">{{t "kid_expired"}}</p>
+    {{if .Personal}}<p class="instruction">{{t "hl_where"}}</p>{{end}}
   {{end}}
   {{if .HelplineTel}}<p class="helpline"><a class="button secondary" href="tel:{{.HelplineTel}}">{{.HelplineLabel}}</a></p>{{end}}
   <section class="contacts" aria-label="{{index .Contacts 0}}">

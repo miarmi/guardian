@@ -14,7 +14,7 @@
 </head>
 <body>
 <main>
-  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}} <span class="banner-go">{{t "open_arrow"}}</span></a>{{end}}
+  {{if .Analysis.Alert}}<a class="banner" href="/findings" role="alert">{{.Analysis.Alert}}{{with .Analysis.AlertMore}} <span class="banner-more">{{.}}</span>{{end}} <span class="banner-go">{{t "open_arrow"}}</span></a>{{end}}
   <header>
     <div class="title-row">
       <h1>Guardian</h1>

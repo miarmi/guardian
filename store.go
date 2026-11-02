@@ -121,7 +121,8 @@ func openStore(path string) (*store, error) {
 		updated_at INTEGER NOT NULL,
 		message TEXT NOT NULL DEFAULT '',
 		status TEXT NOT NULL DEFAULT 'open',
-		seen INTEGER NOT NULL DEFAULT 0
+		seen INTEGER NOT NULL DEFAULT 0,
+		merged INTEGER NOT NULL DEFAULT 0
 	)`); err != nil {
 		db.Close()
 		return nil, err
@@ -685,20 +686,27 @@ type HelpRequest struct {
 const helpMerge = 10 * time.Minute
 
 // AddHelpRequest records a request; within helpMerge of the last open one
-// it adds to that one instead (isNew false).
-func (s *store) AddHelpRequest(ctx context.Context, message string) (id int64, isNew bool, err error) {
+// it adds to that one instead (isNew false). Merged parts each start with
+// their time, written by stamp.
+func (s *store) AddHelpRequest(ctx context.Context, message string, stamp func(time.Time) string) (id int64, isNew bool, err error) {
 	now := time.Now()
 	var old string
-	err = s.db.QueryRowContext(ctx, `SELECT id, message FROM help_requests WHERE status = 'open' AND created_at >= ?
-		ORDER BY id DESC LIMIT 1`, now.Add(-helpMerge).Unix()).Scan(&id, &old)
+	var created int64
+	var merged bool
+	err = s.db.QueryRowContext(ctx, `SELECT id, message, created_at, merged FROM help_requests WHERE status = 'open' AND created_at >= ?
+		ORDER BY id DESC LIMIT 1`, now.Add(-helpMerge).Unix()).Scan(&id, &old, &created, &merged)
 	if err == nil {
 		if message != "" {
+			if old != "" && !merged {
+				old = stamp(time.Unix(created, 0)) + " " + old
+			}
 			if old != "" {
 				old += "\n\n"
 			}
-			old += message
+			old += stamp(now) + " " + message
+			merged = true
 		}
-		_, err = s.db.ExecContext(ctx, "UPDATE help_requests SET message = ?, updated_at = ?, seen = 0 WHERE id = ?", old, now.Unix(), id)
+		_, err = s.db.ExecContext(ctx, "UPDATE help_requests SET message = ?, merged = ?, updated_at = ?, seen = 0 WHERE id = ?", old, merged, now.Unix(), id)
 		return id, false, err
 	}
 	if err != sql.ErrNoRows {

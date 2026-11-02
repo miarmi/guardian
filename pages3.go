@@ -315,7 +315,7 @@ func (a *App) helpAsk(w http.ResponseWriter, r *http.Request) {
 	if utf8.RuneCountInString(msg) > 1000 {
 		msg = string([]rune(msg)[:1000])
 	}
-	_, isNew, err := a.store.AddHelpRequest(r.Context(), msg)
+	_, isNew, err := a.store.AddHelpRequest(r.Context(), msg, func(t time.Time) string { return t.In(a.zone).Format("15:04") })
 	if err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return

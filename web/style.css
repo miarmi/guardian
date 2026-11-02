@@ -157,7 +157,11 @@ details[open] > summary::after { transform: rotate(90deg); }
 .sit-meta { color: var(--muted); font-size: 0.9rem; }
 .situations details[open] summary { margin-bottom: 0.5rem; }
 .new-situation { margin-top: 1.5rem; }
-.finding-head { display: flex; gap: 0.5rem; align-items: center; }
+.finding-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.finding-head .sit-name { flex-basis: 100%; }
+.chip { white-space: nowrap; }
+.settings-section fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.banner-more { font-weight: 400; opacity: 0.85; white-space: nowrap; }
 .finding.serious { border-left: 4px solid var(--danger); }
 .finding.closed { opacity: 0.75; }
 .reason { margin: 0.5rem 0; }

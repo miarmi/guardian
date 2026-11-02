@@ -295,7 +295,8 @@ func TestPersonalHelpLink(t *testing.T) {
 	}
 	// A new link retires the old one.
 	do("POST", "/settings/helplink", nil)
-	if r := do("GET", link, nil); r.Code != http.StatusNotFound || !strings.Contains(r.Body.String(), "Tenhle odkaz už neplatí.") {
+	if r := do("GET", link, nil); r.Code != http.StatusNotFound || !strings.Contains(r.Body.String(), "Tenhle odkaz už neplatí.") ||
+		!strings.Contains(r.Body.String(), "Platný odkaz najdeš v nejnovějším e-mailu od Guardiana s předmětem „Guardian: když budeš potřebovat pomoc“.") {
 		t.Fatal("old link still works")
 	}
 	newLink := strings.TrimPrefix(childMails(t, do)[0].Links[0], "https://guardian.example")
@@ -416,7 +417,7 @@ func TestChildSeesResolvedAndBadAddressesAreSaid(t *testing.T) {
 
 func TestLinkify(t *testing.T) {
 	got := string(linkify("Když jde o bezpečí hned: 158 (policie) nebo 112 <b>"))
-	if !strings.Contains(got, `<a class="tel" href="tel:158">158</a>`) || !strings.Contains(got, `href="tel:112"`) || strings.Contains(got, "<b>") {
+	if !strings.Contains(got, `<a class="tel" href="tel:158" style="white-space:nowrap">158</a>`) || !strings.Contains(got, `href="tel:112"`) || strings.Contains(got, "<b>") {
 		t.Fatalf("got %s", got)
 	}
 }

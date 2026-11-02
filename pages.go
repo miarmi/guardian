@@ -18,6 +18,7 @@ type overviewAnalysis struct {
 	Destination string // host the text goes to, "" when it stays home
 	OpenCount   int
 	Alert       string // banner text, "" when none
+	AlertMore   string // "+1 další" when more is waiting
 	Reason      string // why there is no model, when it is just the key
 	MailFailed  string // why the child's e-mail didn't go out (criterion 25)
 }
@@ -25,18 +26,28 @@ type overviewAnalysis struct {
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	var o overviewAnalysis
 	o.OpenCount, _ = a.store.OpenFindingCount(ctx)
+	// The child's requests come first; the others are counted after it.
+	var alerts []string
 	if sit, name, chat, ok, _ := a.store.UnseenHelp(ctx); ok {
 		if name == "" {
 			name = chat
 		}
-		o.Alert = a.lang.T("help_banner", sit, name)
-	} else if ok, _ := a.store.UnseenHelpRequest(ctx); ok {
-		o.Alert = a.lang.T("help_request")
-	} else if sit, name, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
+		alerts = append(alerts, a.lang.T("help_banner", sit, name))
+	}
+	if ok, _ := a.store.UnseenHelpRequest(ctx); ok {
+		alerts = append(alerts, a.lang.T("help_request"))
+	}
+	if sit, name, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
 		if name == "" {
 			name = chat
 		}
-		o.Alert = a.lang.T("alert_banner", sit, name)
+		alerts = append(alerts, a.lang.T("alert_banner", sit, name))
+	}
+	if len(alerts) > 0 {
+		o.Alert = alerts[0]
+		if len(alerts) > 1 {
+			o.AlertMore = a.lang.T("banner_more", len(alerts)-1)
+		}
 	}
 	o.MailFailed = a.nt.childMailError(ctx)
 	if a.an == nil {
