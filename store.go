@@ -88,8 +88,9 @@ var migrations = []string{
 	`ALTER TABLE findings ADD COLUMN child_mail_due INTEGER NOT NULL DEFAULT 0`,
 }
 
-// laterTables came with phase 3 and are created after the migrations.
+// laterTables came with phases 3 and 5 and are created after the migrations.
 var laterTables = []string{
+	signalsTable,
 	`CREATE TABLE IF NOT EXISTS help_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		created_at INTEGER NOT NULL,

@@ -14,6 +14,9 @@ Guardian
   {{.Reason}}
 {{end}}{{else}}{{.L.T "digest_none"}}
 {{end}}
-{{.L.T "digest_chats" .Chats}}
+{{if .Signals}}{{.L.T "digest_signals"}}
+{{range .Signals}}- {{.Platform}}: {{.Summary}}
+{{end}}
+{{end}}{{.L.T "digest_chats" .Chats}}
 
 {{.L.T "digest_open_findings"}}: {{.Link}}

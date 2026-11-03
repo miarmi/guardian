@@ -79,6 +79,15 @@
   {{else}}
   <p class="empty">{{t "fin_none"}}</p>
   {{end}}
+  {{if .Signals}}
+  <section class="signals" aria-labelledby="signals-heading">
+    <h2 id="signals-heading">{{t "sig_title"}}</h2>
+    <ul class="signal-list">
+      {{range .Signals}}<li class="signal"><span class="signal-meta">{{.Platform}} · {{when .Received}}</span><p>{{.Summary}}</p></li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
 </main>
 <footer>{{t "version"}}: {{.Version}}</footer>
 </body>

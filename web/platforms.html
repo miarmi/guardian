@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{t "plat_title"}}{{t "title_sep"}}</title>
+<meta name="theme-color" content="#1e6b64">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="back"><a href="/">{{t "back"}}</a></p>
+    <h1>{{t "plat_title"}}</h1>
+    <p class="intro">{{t "plat_intro"}}</p>
+  </header>
+  <ul class="platforms" aria-label="{{t "plat_title"}}">
+    {{range .Platforms}}
+    <li class="platform {{.State}}">
+      <div class="platform-head"><span class="platform-name">{{.Name}}</span> <span class="chip plat-{{.State}}">{{t (printf "plat_state_%s" .State)}}</span></div>
+      <p class="platform-why">{{.Why}}</p>
+      {{if .Do}}<p class="platform-do">{{if .Link}}<a href="{{.Link}}">{{.Do}}</a>{{else}}{{.Do}}{{end}}</p>{{end}}
+    </li>
+    {{end}}
+  </ul>
+</main>
+<footer>{{t "version"}}: {{.Version}}</footer>
+</body>
+</html>

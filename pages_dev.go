@@ -50,3 +50,21 @@ func (a *App) devMailDown(w http.ResponseWriter, r *http.Request) {
 		a.nt.mu.Unlock()
 	})(w, r)
 }
+
+// devGmailMessage puts an e-mail into the practice mailbox (criterion 36).
+func (a *App) devGmailMessage(w http.ResponseWriter, r *http.Request) {
+	if !parseForm(w, r, formLimit) {
+		return
+	}
+	a.an.practiceBox.add(r.PostForm.Get("from"), r.PostForm.Get("subject"), r.PostForm.Get("text"))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) devGmailDown(w http.ResponseWriter, r *http.Request) {
+	toggle(func(on bool) {
+		b := a.an.practiceBox
+		b.mu.Lock()
+		b.unreachable = on
+		b.mu.Unlock()
+	})(w, r)
+}

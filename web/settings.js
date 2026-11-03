@@ -10,7 +10,8 @@
     mailType.addEventListener("change", function () {
       document.getElementById("graph-fields").hidden = mailType.value !== "graph";
       document.getElementById("smtp-fields").hidden = mailType.value !== "smtp";
-      document.getElementById("sender-field").hidden = mailType.value === "practice";
+      document.getElementById("sender-field").hidden = mailType.value === "practice" || mailType.value === "gmail";
+      document.getElementById("gmail-sending").hidden = mailType.value !== "gmail";
     });
   }
   var form = document.getElementById("settings-form");

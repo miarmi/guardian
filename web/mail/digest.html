@@ -11,6 +11,15 @@
 </div>
 {{end}}
 {{end}}
+{{if .Signals}}
+<p style="margin:0 0 12px;font-weight:700">{{.L.T "digest_signals"}}</p>
+{{range .Signals}}
+<div style="border-left:4px solid #d6e0de;padding:4px 0 4px 12px;margin:0 0 12px">
+<p style="margin:0;color:#56666d">{{.Platform}} · {{.Received.Format "2. 1."}}</p>
+<p style="margin:4px 0 0">{{.Summary}}</p>
+</div>
+{{end}}
+{{end}}
 {{if .Findings}}
 <p style="margin:0 0 12px">{{.L.T "digest_intro"}}</p>
 {{range .Findings}}

@@ -19,6 +19,9 @@ type rawFinding struct {
 // analyst looks at one chat's messages for the given situations.
 type analyst interface {
 	Analyze(ctx context.Context, chat chatInfo, old, fresh []numbered, sits []Situation) ([]rawFinding, error)
+	// Signal reads one parental e-mail (criterion 34): a short signal ("" for
+	// advertising or account e-mails) and any situations it shows.
+	Signal(ctx context.Context, m parentalMail, sits []Situation) (string, []rawFinding, error)
 }
 
 // llmAnalyst asks a real model, with the situations written into the prompt.
@@ -34,6 +37,56 @@ func (l llmAnalyst) Analyze(ctx context.Context, chat chatInfo, old, fresh []num
 		return nil, err
 	}
 	return parseFindings(answer, sits, fresh, first)
+}
+
+func (l llmAnalyst) Signal(ctx context.Context, m parentalMail, sits []Situation) (string, []rawFinding, error) {
+	var b strings.Builder
+	b.WriteString("SITUATIONS\n")
+	for _, s := range sits {
+		fmt.Fprintf(&b, "id %d | %s | sensitivity %s | %s\n", s.ID, s.Name, s.Sensitivity, oneLine(s.Description))
+	}
+	fmt.Fprintf(&b, "\nE-MAIL from %s (%s), %s\nSubject: %s\n\n%s\n", m.Platform, m.From, m.Date.Format("2006-01-02"), m.Subject, m.Text)
+	answer, err := l.model.Ask(ctx, fmt.Sprintf(signalPrompt, l.lang.name), b.String())
+	if err != nil {
+		return "", nil, err
+	}
+	return parseSignal(answer, sits)
+}
+
+const signalPrompt = `You help parents protect their child from bullying and online harm, with the child's knowledge.
+You read one e-mail that a platform's parental tool (Discord Family Center, Roblox parental controls, Epic Games time reports) sent to the parent about their child.
+Write a short signal in %s, one or two plain sentences: the platform and what is new or worth a look — new friends or contacts, new servers or groups, who the child talked to, requests to approve, time played. Name people and servers as written. Do not judge.
+If the e-mail is advertising, a newsletter, a security or account notice, or says nothing about the child's activity, the signal is "".
+If the e-mail clearly shows one of the listed situations (for example a new contact that looks like an unknown adult), add a finding with a calm reason the child may read. Most e-mails have no finding.
+Answer with JSON only: {"signal":"...","findings":[{"situation":<id>,"reason":"..."}]}`
+
+// parseSignal reads the model's answer to signalPrompt.
+func parseSignal(answer string, sits []Situation) (string, []rawFinding, error) {
+	i, j := strings.Index(answer, "{"), strings.LastIndex(answer, "}")
+	if i < 0 || j < i {
+		return "", nil, errors.New("the model's answer could not be read")
+	}
+	var out struct {
+		Signal   string `json:"signal"`
+		Findings []struct {
+			Situation int64  `json:"situation"`
+			Reason    string `json:"reason"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(answer[i:j+1]), &out); err != nil {
+		return "", nil, errors.New("the model's answer could not be read")
+	}
+	known := map[int64]bool{}
+	for _, s := range sits {
+		known[s.ID] = true
+	}
+	var res []rawFinding
+	for _, f := range out.Findings {
+		if known[f.Situation] && strings.TrimSpace(f.Reason) != "" {
+			res = append(res, rawFinding{SituationID: f.Situation, Reason: strings.TrimSpace(f.Reason)})
+		}
+	}
+	return strings.TrimSpace(out.Signal), res, nil
 }
 
 // analysisQuestion lists the situations and numbers the messages, earlier
@@ -179,4 +232,20 @@ func (p *practiceModel) Analyze(ctx context.Context, chat chatInfo, old, fresh [
 		}
 	}
 	return res, nil
+}
+
+// Signal is the practice model's reading of a parental e-mail (criterion
+// 36): the signal quotes the subject; a situation's name in square
+// brackets in the text makes a finding.
+func (p *practiceModel) Signal(ctx context.Context, m parentalMail, sits []Situation) (string, []rawFinding, error) {
+	if err := p.check(); err != nil {
+		return "", nil, err
+	}
+	var res []rawFinding
+	for _, s := range sits {
+		if strings.Contains(m.Text, "["+s.Name+"]") {
+			res = append(res, rawFinding{SituationID: s.ID, Reason: p.reason})
+		}
+	}
+	return m.Platform + ": " + m.Subject, res, nil
 }

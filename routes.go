@@ -40,6 +40,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /settings/mail", a.saveMail)
 	mux.HandleFunc("POST /settings/mail/test", a.testMailHandler)
 	mux.HandleFunc("POST /settings/helplink", a.sendHelpLinkHandler)
+	mux.HandleFunc("POST /settings/gmail", a.saveGmail)
+	mux.HandleFunc("POST /settings/gmail/test", a.testGmail)
+	mux.HandleFunc("GET /platforms", a.platformsPage)
 
 	// Situace and Nálezy (pages_situations.go, pages_findings.go).
 	mux.HandleFunc("GET /situations", a.situationsPage)
@@ -72,6 +75,8 @@ func (a *App) Handler() http.Handler {
 			mux.HandleFunc("GET /dev/outbox", a.devOutbox)
 			mux.HandleFunc("POST /dev/digest/run", a.devDigest)
 			mux.HandleFunc("POST /dev/mail/unreachable", a.devMailDown)
+			mux.HandleFunc("POST /dev/gmail/message", a.devGmailMessage)
+			mux.HandleFunc("POST /dev/gmail/unreachable", a.devGmailDown)
 		}
 	}
 

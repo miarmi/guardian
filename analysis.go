@@ -29,21 +29,24 @@ const (
 
 // analyzer runs the hourly look and remembers how it went.
 type analyzer struct {
-	st         *store
-	lang       *lang
-	zone       *time.Location
-	secretsDir string
-	practice   *practiceModel // non-nil only in practice mode
-	notify     func(ctx context.Context, findingID int64, isNew bool)
-	afterLook  func(ctx context.Context, start time.Time) // e.g. the child's e-mails
+	st          *store
+	lang        *lang
+	zone        *time.Location
+	secretsDir  string
+	practice    *practiceModel // non-nil only in practice mode
+	notify      func(ctx context.Context, findingID int64, isNew bool)
+	afterLook   func(ctx context.Context, start time.Time) // e.g. the child's e-mails
+	box         mailbox                                    // Gmail (criterion 33)
+	practiceBox *practiceBox                               // the practice mailbox (criterion 36), practice mode only
 
 	run sync.Mutex // one look at a time
 
-	mu      sync.Mutex
-	lastErr string
-	limited string // the day the limit was hit, "" if not
-	lastRun time.Time
-	hourly  bool // the hourly loop runs (not in practice mode)
+	mu       sync.Mutex
+	gmailErr string // why Gmail couldn't be read at the last look
+	lastErr  string
+	limited  string // the day the limit was hit, "" if not
+	lastRun  time.Time
+	hourly   bool // the hourly loop runs (not in practice mode)
 }
 
 // analysisState is what the overview says about the analysis.
@@ -198,6 +201,16 @@ func (z *analyzer) runOnce(ctx context.Context) {
 			z.fail(err)
 			return
 		}
+	}
+	switch err := z.readParentalMail(ctx, a, m, on); {
+	case errors.Is(err, errLimit):
+		z.mu.Lock()
+		z.limited, z.lastRun = z.today(), time.Now()
+		z.mu.Unlock()
+		return
+	case err != nil:
+		z.fail(err)
+		return
 	}
 	z.mu.Lock()
 	z.lastErr, z.lastRun = "", time.Now()

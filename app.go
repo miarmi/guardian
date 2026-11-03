@@ -121,6 +121,7 @@ var pageFiles = map[string]string{
 	"settings":   "settings.html",
 	"situations": "situations.html",
 	"findings":   "findings.html",
+	"platforms":  "platforms.html",
 	"delete":     "delsituation.html",
 	"kid":        "kid.html",
 }
@@ -150,9 +151,10 @@ func newApp(st *store, wa connector, cfg Config) *App {
 	}
 	a.nt = &notifier{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, baseURL: cfg.BaseURL, practice: cfg.Practice}
 	if wa != nil {
-		a.an = &analyzer{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, notify: a.nt.onFinding, afterLook: a.nt.retryChildMails}
+		a.an = &analyzer{st: st, lang: l, zone: zone, secretsDir: cfg.SecretsDir, notify: a.nt.onFinding, afterLook: a.nt.retryChildMails, box: gmailBox{}}
 		if cfg.Practice {
 			a.an.practice = &practiceModel{reason: l.T("practice_reason"), errText: l.T("practice_unreachable")}
+			a.an.practiceBox = &practiceBox{errText: l.T("practice_gmail_down")}
 		}
 	}
 	// Previews too, so a preview shows the default set production will get.

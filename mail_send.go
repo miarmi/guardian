@@ -41,6 +41,17 @@ func (n *notifier) sendWith(ctx context.Context, m mailSettings, e email) error 
 	if len(e.To) == 0 {
 		return nil
 	}
+	if m.Type == mailGmail {
+		g := readGmailSettings(ctx, n.st, n.secretsDir, n.practice)
+		if g.Type == gmailPractice {
+			m.Type = mailPractice
+		} else {
+			if !g.ready() {
+				return errors.New(n.lang.T("gmail_incomplete"))
+			}
+			m.Type, m.Host, m.Port, m.User, m.Password, m.Sender = mailSMTP, gmailSMTP, "587", g.Address, g.Password, g.Address
+		}
+	}
 	switch m.Type {
 	case mailPractice:
 		n.mu.Lock()

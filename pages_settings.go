@@ -31,6 +31,10 @@ type settingsData struct {
 	MailTyped   *mailSettings // the form as typed, when it had a mistake
 	HelpResult  string        // after "Poslat dítěti odkaz pro pomoc"
 	HelpOK      bool
+	Gmail       gmailView
+	GmailResult string // after Vyzkoušet Gmail or a bad address
+	GmailOK     bool
+	GmailTyped  *gmailSettings // the Gmail form as typed
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +54,12 @@ func (a *App) renderSettings(w http.ResponseWriter, r *http.Request, d settingsD
 	d.Mail.HelpResult, d.Mail.HelpOK = d.HelpResult, d.HelpOK
 	if d.MailTyped != nil {
 		d.Mail.M = *d.MailTyped
+	}
+	d.Gmail = a.gmailView(r)
+	d.Gmail.Result, d.Gmail.ResultOK = d.GmailResult, d.GmailOK
+	if d.GmailTyped != nil {
+		d.Gmail.G = *d.GmailTyped
+		d.Gmail.G.Password = ""
 	}
 	if a.an == nil {
 		// Previews show the form as saved, locked: nothing is analysed there.

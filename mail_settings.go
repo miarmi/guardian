@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	mailGmail    = "gmail" // the Gmail account of the Gmail section (criterion 32)
 	mailGraph    = "graph"
 	mailSMTP     = "smtp"
 	mailPractice = "practice"

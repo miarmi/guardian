@@ -103,10 +103,14 @@ type overviewAnalysis struct {
 	Banners     []banner // what waits for the parents, the child's request first
 	Reason      string   // why there is no model, when it is just the key
 	MailFailed  string   // why the child's e-mail didn't go out (criterion 25)
+	GmailFailed string   // why Gmail couldn't be read (criterion 35)
 }
 
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	o := overviewAnalysis{MailFailed: a.nt.childMailError(ctx)}
+	if a.an != nil {
+		o.GmailFailed = a.an.gmailError()
+	}
 	o.OpenCount, _ = a.store.OpenFindingCount(ctx)
 	o.Banners = a.banners(ctx)
 	if a.an == nil {
