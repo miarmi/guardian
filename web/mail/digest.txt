@@ -15,7 +15,7 @@ Guardian
 {{end}}{{else}}{{.L.T "digest_none"}}
 {{end}}
 {{if .Signals}}{{.L.T "digest_signals"}}
-{{range .Signals}}- {{.Platform}}: {{.Summary}}
+{{range .Signals}}- {{.Platform}} ({{.Received.Format "2. 1."}}): {{.Summary}}
 {{end}}
 {{end}}{{.L.T "digest_chats" .Chats}}
 

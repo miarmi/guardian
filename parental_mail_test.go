@@ -171,14 +171,17 @@ func TestPracticeGmailSignalsFindingsAndSending(t *testing.T) {
 	do("POST", "/dev/analysis/run", nil)
 	do("POST", "/dev/analysis/run", nil) // read once only
 	fin := do("GET", "/findings", nil).Body.String()
-	if !strings.Contains(fin, "Z rodičovských nástrojů") || strings.Count(fin, "Discord: Týdenní souhrn") != 1 || strings.Contains(fin, "Soukromé") {
+	if !strings.Contains(fin, "Z rodičovských nástrojů") || !strings.Contains(fin, "Týdenní souhrn") || strings.Contains(fin, "Soukromé") {
 		t.Fatal("signal missing, doubled, or another sender read")
 	}
 	if !strings.Contains(fin, "Discord (rodičovský e-mail)") || strings.Contains(fin, "Výhrůžky násilím") {
 		t.Fatal("finding from the signal missing, or one from another sender")
 	}
-	if sigs, _ := a.store.Signals(context.Background(), 10); len(sigs) != 1 {
-		t.Fatalf("%d signals", len(sigs))
+	if sigs, _ := a.store.Signals(context.Background(), 10); len(sigs) != 1 || sigs[0].Summary != "Týdenní souhrn" {
+		t.Fatalf("signals: %+v", sigs)
+	}
+	if !strings.Contains(fin, "E-mail Discord") {
+		t.Fatal("the e-mail finding shows no evidence")
 	}
 	// Sending through Gmail (practice): the test e-mail goes to the outbox.
 	if !strings.Contains(do("POST", "/settings/mail/test", url.Values{}).Body.String(), "E-mail odešel.") {

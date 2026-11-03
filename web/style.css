@@ -289,14 +289,13 @@ blockquote .who { display: block; font-size: 0.85rem; font-weight: 700; color: v
 .kid header .intro { color: #ffffff; font-size: 1.15rem; margin-top: 0.75rem; }
 
 /* Other platforms and signals from parental tools */
-.more-link { margin: 0.75rem 0 0; }
-.more-link a { font-weight: 700; }
+.more-link { display: flex; justify-content: space-between; align-items: center; min-height: 3rem; margin-top: 0.75rem; padding: 0 1.1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); font-weight: 700; text-decoration: none; }
+.more-link::after { content: "›"; font-size: 1.4rem; color: var(--muted); }
 .platforms li { display: grid; gap: 0.35rem; }
 .platform-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .platform-name { font-weight: 700; font-size: 1.08rem; margin-right: auto; }
 .platform-why, .platform-do { margin: 0; }
 .platform-do { color: var(--muted); font-size: 0.95rem; }
-.platform.no .platform-name { color: var(--muted); }
 .chip.plat-connected { background: var(--sea-soft); color: var(--ok); }
 .chip.plat-email { background: var(--sun-soft); color: var(--sun-ink); }
 .chip.plat-not_connected, .chip.plat-later { background: var(--off-bg); color: var(--off-text); }

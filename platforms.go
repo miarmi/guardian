@@ -73,17 +73,17 @@ var platformTexts = []platformText{
 		map[string]string{
 			"cs": "Telegram má oficiální rozhraní a propojení přes QR kód by šlo. Zatím není postavené.",
 			"en": "Telegram has an official interface and a QR link would work. It isn't built yet."},
-		map[string]string{"cs": "Řekni, jestli ho chceš.", "en": "Say if you want it."}},
+		map[string]string{"cs": "Dá se doplnit.", "en": "Can be added."}},
 	{"Signal", platLater,
 		map[string]string{
 			"cs": "Signal jde propojit jako další zařízení, podobně jako WhatsApp. Zatím není postavené.",
 			"en": "Signal can be linked as another device, like WhatsApp. It isn't built yet."},
-		map[string]string{"cs": "Řekni, jestli ho chceš.", "en": "Say if you want it."}},
+		map[string]string{"cs": "Dá se doplnit.", "en": "Can be added."}},
 	{"Bakaláři", platLater,
 		map[string]string{
-			"cs": "Zprávy Komens jdou číst s přihlášením dítěte. Šikany tam bývá málo, je to hlavně komunikace se školou.",
+			"cs": "Zprávy Komens jdou číst s přihlášením dítěte, zatím to není postavené. Šikany tam bývá málo, je to hlavně komunikace se školou.",
 			"en": "Komens messages can be read with the child's login. There is little bullying there; it is mostly school messages."},
-		map[string]string{"cs": "Řekni, jestli je chceš.", "en": "Say if you want them."}},
+		map[string]string{"cs": "Dá se doplnit.", "en": "Can be added."}},
 	{"Snapchat", platNo,
 		map[string]string{
 			"cs": "Snapchat nikomu zvenku zprávy nepustí a účty s cizími aplikacemi zamyká.",
@@ -107,7 +107,7 @@ var platformTexts = []platformText{
 			"en": "In Microsoft Family, set who the child can talk to in Minecraft."}},
 	{"Viber", platNo,
 		map[string]string{"cs": "Viber nemá cestu k osobním zprávám.", "en": "Viber has no way to personal messages."},
-		map[string]string{"cs": "Rozhovor s dítětem.", "en": "Talking with the child."}},
+		map[string]string{"cs": "Zatím jen rozhovor s dítětem.", "en": "For now, only talking with your child."}},
 	{"PlayStation", platNo,
 		map[string]string{"cs": "Zprávy nemají rozhraní.", "en": "Messages have no interface."},
 		map[string]string{
@@ -140,9 +140,17 @@ func (a *App) platformsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	list = append(list, wa)
 	pm := platform{Name: a.lang.T("plat_mail"), State: platNotConnected, Why: a.lang.T("plat_mail_why"), Link: "/settings#gmail"}
-	if g := readGmailSettings(ctx, a.store, a.nt.secretsDir, a.dev != nil); g.Read && g.ready() {
+	g := readGmailSettings(ctx, a.store, a.nt.secretsDir, a.dev != nil)
+	failed := ""
+	if a.an != nil {
+		failed = a.an.gmailError()
+	}
+	switch {
+	case g.Read && g.ready() && failed != "":
+		pm.Do = a.lang.T("gmail_failed", failed) // not honest to call it connected
+	case g.Read && g.ready():
 		pm.State = platConnected
-	} else {
+	default:
 		pm.Do = a.lang.T("plat_mail_do")
 	}
 	list = append(list, pm)

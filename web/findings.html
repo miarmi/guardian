@@ -80,7 +80,7 @@
   <p class="empty">{{t "fin_none"}}</p>
   {{end}}
   {{if .Signals}}
-  <section class="signals" aria-labelledby="signals-heading">
+  <section class="signals" id="signals" aria-labelledby="signals-heading">
     <h2 id="signals-heading">{{t "sig_title"}}</h2>
     <ul class="signal-list">
       {{range .Signals}}<li class="signal"><span class="signal-meta">{{.Platform}} · {{when .Received}}</span><p>{{.Summary}}</p></li>

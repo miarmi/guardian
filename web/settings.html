@@ -81,6 +81,33 @@
     {{else}}<p class="note">{{t "notif_none"}}</p>{{end}}
   </section>
 
+  <section id="gmail" aria-labelledby="gmail-heading" class="settings-section">
+    <h2 id="gmail-heading">{{t "gmail_title"}}</h2>
+    <p class="note">{{t "gmail_intro"}}</p>
+    {{if .Gmail.Saved}}<p class="status-line ok transient" role="status">{{t "mail_saved"}}</p>{{end}}
+    {{if .Gmail.Result}}<p class="status-line scroll-here{{if .Gmail.ResultOK}} ok{{else}} warn{{end}}" role="status">{{.Gmail.Result}}</p>{{end}}
+    {{if and .Gmail.Error (not .Gmail.Result)}}<p class="status-line warn">{{t "gmail_failed" .Gmail.Error}}</p>{{end}}
+    <form method="post" action="/settings/gmail" class="form" id="gmail-form">
+      <fieldset{{if not .Available}} disabled{{end}}>
+      {{if .Gmail.Practice}}<label class="check"><input type="checkbox" id="gmail_practice" name="gmail_type" value="practice"{{if eq .Gmail.G.Type "practice"}} checked{{end}}> {{t "s_practice"}}</label>{{end}}
+      <div class="fields" id="gmail-fields"{{if eq .Gmail.G.Type "practice"}} hidden{{end}}>
+      <label for="gmail_address">{{t "f_gmail_address"}}</label>
+      <input id="gmail_address" name="gmail_address" type="email" inputmode="email" autocomplete="off" spellcheck="false" value="{{.Gmail.G.Address}}" placeholder="jmeno@gmail.com">
+      <label for="gmail_password">{{t "f_gmail_password"}}</label>
+      <input id="gmail_password" name="gmail_password" type="password" autocomplete="off"{{if .Gmail.PassHint}} placeholder="{{.Gmail.PassHint}}"{{end}}>
+      {{if .Gmail.PassHint}}<p class="note">{{t "gmail_saved_pass" .Gmail.PassHint}}</p>{{end}}
+      <p class="note">{{t "gmail_password_hint"}}</p>
+      </div>
+      <label class="check switch"><input type="checkbox" role="switch" name="gmail_read" value="1"{{if .Gmail.G.Read}} checked{{end}}> {{t "f_gmail_read"}}</label>
+      <p class="note">{{t "gmail_read_hint"}}</p>
+      <div class="choices">
+        <button type="submit">{{t "save"}}</button>
+        <button type="submit" class="secondary" formaction="/settings/gmail/test">{{t "gmail_test"}}</button>
+      </div>
+      </fieldset>
+    </form>
+  </section>
+
   <section id="mail" aria-labelledby="mail-heading" class="settings-section">
     <h2 id="mail-heading">{{t "mail_title"}}</h2>
     {{if .Mail.Saved}}<p class="status-line ok transient" role="status">{{t "mail_saved"}}</p>{{end}}
@@ -120,7 +147,7 @@
         <input id="password" name="password" type="password" autocomplete="off"{{if .Mail.PassHint}} placeholder="{{.Mail.PassHint}}"{{end}}>
         {{if .Mail.PassHint}}<p class="note">{{t "secret_saved" .Mail.PassHint}}</p>{{end}}
       </div>
-      <p class="note" id="gmail-sending"{{if ne .Mail.M.Type "gmail"}} hidden{{end}}>{{t "gmail_sending_hint"}} <a href="#gmail">{{t "gmail_title"}}</a></p>
+      <p class="note" id="gmail-sending"{{if ne .Mail.M.Type "gmail"}} hidden{{end}}><a href="#gmail">{{t "gmail_sending_hint"}}</a></p>
       <div class="fields" id="sender-field"{{if or (eq .Mail.M.Type "practice") (eq .Mail.M.Type "gmail")}} hidden{{end}}>
         <label for="sender">{{t "f_sender"}}</label>
         <input id="sender" name="sender" type="email" autocomplete="off" spellcheck="false" value="{{.Mail.M.Sender}}">
@@ -128,30 +155,6 @@
       <div class="choices">
         <button type="submit">{{t "save"}}</button>
         <button type="submit" class="secondary" formaction="/settings/mail/test">{{t "mail_test"}}</button>
-      </div>
-      </fieldset>
-    </form>
-  </section>
-
-  <section id="gmail" aria-labelledby="gmail-heading" class="settings-section">
-    <h2 id="gmail-heading">{{t "gmail_title"}}</h2>
-    <p class="note">{{t "gmail_intro"}}</p>
-    {{if .Gmail.Saved}}<p class="status-line ok transient" role="status">{{t "mail_saved"}}</p>{{end}}
-    {{if .Gmail.Result}}<p class="status-line scroll-here{{if .Gmail.ResultOK}} ok{{else}} warn{{end}}" role="status">{{.Gmail.Result}}</p>{{end}}
-    {{if .Gmail.Error}}<p class="status-line warn">{{t "gmail_failed" .Gmail.Error}}</p>{{end}}
-    <form method="post" action="/settings/gmail" class="form" id="gmail-form">
-      <fieldset{{if not .Available}} disabled{{end}}>
-      {{if .Gmail.Practice}}<label class="check"><input type="checkbox" name="gmail_type" value="practice"{{if eq .Gmail.G.Type "practice"}} checked{{end}}> {{t "s_practice"}}</label>{{end}}
-      <label for="gmail_address">{{t "f_gmail_address"}}</label>
-      <input id="gmail_address" name="gmail_address" type="email" inputmode="email" autocomplete="off" spellcheck="false" value="{{.Gmail.G.Address}}" placeholder="jmeno@gmail.com">
-      <label for="gmail_password">{{t "f_gmail_password"}}</label>
-      <input id="gmail_password" name="gmail_password" type="password" autocomplete="off"{{if .Gmail.PassHint}} placeholder="{{.Gmail.PassHint}}"{{end}}>
-      <p class="note">{{if .Gmail.PassHint}}{{t "secret_saved" .Gmail.PassHint}} {{end}}{{t "gmail_password_hint"}}</p>
-      <label class="check switch"><input type="checkbox" role="switch" name="gmail_read" value="1"{{if .Gmail.G.Read}} checked{{end}}> {{t "f_gmail_read"}}</label>
-      <p class="note">{{t "gmail_read_hint"}}</p>
-      <div class="choices">
-        <button type="submit">{{t "save"}}</button>
-        <button type="submit" class="secondary" formaction="/settings/gmail/test">{{t "gmail_test"}}</button>
       </div>
       </fieldset>
     </form>

@@ -55,7 +55,7 @@ func (l llmAnalyst) Signal(ctx context.Context, m parentalMail, sits []Situation
 
 const signalPrompt = `You help parents protect their child from bullying and online harm, with the child's knowledge.
 You read one e-mail that a platform's parental tool (Discord Family Center, Roblox parental controls, Epic Games time reports) sent to the parent about their child.
-Write a short signal in %s, one or two plain sentences: the platform and what is new or worth a look — new friends or contacts, new servers or groups, who the child talked to, requests to approve, time played. Name people and servers as written. Do not judge.
+Write a short signal in %s, one or two plain sentences, without naming the platform (it is shown next to the signal): what is new or worth a look — new friends or contacts, new servers or groups, who the child talked to, requests to approve, time played. Name people and servers as written. Do not judge.
 If the e-mail is advertising, a newsletter, a security or account notice, or says nothing about the child's activity, the signal is "".
 If the e-mail clearly shows one of the listed situations (for example a new contact that looks like an unknown adult), add a finding with a calm reason the child may read. Most e-mails have no finding.
 Answer with JSON only: {"signal":"...","findings":[{"situation":<id>,"reason":"..."}]}`
@@ -247,5 +247,5 @@ func (p *practiceModel) Signal(ctx context.Context, m parentalMail, sits []Situa
 			res = append(res, rawFinding{SituationID: s.ID, Reason: p.reason})
 		}
 	}
-	return m.Platform + ": " + m.Subject, res, nil
+	return m.Subject, res, nil
 }

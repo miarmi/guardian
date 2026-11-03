@@ -432,6 +432,10 @@ func (z *analyzer) recordSignal(ctx context.Context, pm parentalMail, summary st
 	if err := z.st.EnsureChat(ctx, chat, z.lang.T("email_chat", pm.Platform), false, true); err != nil {
 		return err
 	}
+	// The signal is the evidence: it stands where a chat finding quotes messages.
+	for i := range found {
+		found[i].Quotes = []numbered{{Message: Message{SenderName: z.lang.T("email_from", pm.Platform), At: pm.Date, Text: firstNonEmpty(summary, pm.Subject)}}}
+	}
 	return z.record(ctx, chat, found)
 }
 

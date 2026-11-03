@@ -14,6 +14,12 @@
       document.getElementById("gmail-sending").hidden = mailType.value !== "gmail";
     });
   }
+  var gmailPractice = document.getElementById("gmail_practice");
+  if (gmailPractice) {
+    gmailPractice.addEventListener("change", function () {
+      document.getElementById("gmail-fields").hidden = gmailPractice.checked;
+    });
+  }
   var form = document.getElementById("settings-form");
   if (!form) return;
   var d = form.dataset;

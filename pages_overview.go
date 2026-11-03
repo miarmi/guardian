@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The overview: the connector, the analysis, banners and the chat list.
@@ -104,12 +105,16 @@ type overviewAnalysis struct {
 	Reason      string   // why there is no model, when it is just the key
 	MailFailed  string   // why the child's e-mail didn't go out (criterion 25)
 	GmailFailed string   // why Gmail couldn't be read (criterion 35)
+	SignalsWeek int      // signals from parental e-mails in the last 7 days
 }
 
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 	o := overviewAnalysis{MailFailed: a.nt.childMailError(ctx)}
 	if a.an != nil {
 		o.GmailFailed = a.an.gmailError()
+	}
+	if sigs, err := a.store.SignalsSince(ctx, time.Now().AddDate(0, 0, -7)); err == nil {
+		o.SignalsWeek = len(sigs)
 	}
 	o.OpenCount, _ = a.store.OpenFindingCount(ctx)
 	o.Banners = a.banners(ctx)

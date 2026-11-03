@@ -192,6 +192,7 @@ func (a *App) saveGmail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	a.an.setGmailError("") // new settings: the next look tells
 	http.Redirect(w, r, "/settings?gmailsaved=1#gmail", http.StatusSeeOther)
 }
 
@@ -227,6 +228,7 @@ func (a *App) testGmail(w http.ResponseWriter, r *http.Request) {
 		d.GmailResult = a.lang.T("gmail_bad", a.lang.explain(err))
 	} else {
 		d.GmailResult, d.GmailOK = a.lang.T("gmail_ok"), true
+		a.an.setGmailError("") // it works now; the next look confirms
 	}
 	d.GmailTyped = &g
 	a.renderSettings(w, r, d)
