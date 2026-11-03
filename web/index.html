@@ -63,7 +63,7 @@
       <p class="note">{{if .Destination}}{{t "goes_to" .Destination}}{{else}}{{t "stays_home"}}{{end}}</p>
     {{end}}
     {{if .MailFailed}}<p class="status-line warn">{{t "mail_child_failed" .MailFailed}} <a href="/settings#mail">{{t "settings_arrow"}}</a></p>{{end}}
-    {{if .SignalsWeek}}<p class="note"><a href="/findings#signals">{{t "sig_week" .SignalsWeek}}</a></p>{{end}}
+    {{if .SignalsWeek}}<a class="more-link" href="/findings#signals">{{.SignalsWeek}}</a>{{end}}
     {{if .GmailFailed}}<p class="status-line warn">{{t "gmail_failed" .GmailFailed}} <a href="/settings#gmail">{{t "settings_arrow"}}</a></p>{{end}}
     {{end}}
   </section>

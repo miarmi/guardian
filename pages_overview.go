@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -105,7 +106,7 @@ type overviewAnalysis struct {
 	Reason      string   // why there is no model, when it is just the key
 	MailFailed  string   // why the child's e-mail didn't go out (criterion 25)
 	GmailFailed string   // why Gmail couldn't be read (criterion 35)
-	SignalsWeek int      // signals from parental e-mails in the last 7 days
+	SignalsWeek string   // "Z rodičovských e-mailů: 5 nových zpráv tento týden", "" with none
 }
 
 func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
@@ -114,7 +115,7 @@ func (a *App) overviewAnalysis(ctx context.Context) overviewAnalysis {
 		o.GmailFailed = a.an.gmailError()
 	}
 	if sigs, err := a.store.SignalsSince(ctx, time.Now().AddDate(0, 0, -7)); err == nil {
-		o.SignalsWeek = len(sigs)
+		o.SignalsWeek = a.signalsWeek(len(sigs))
 	}
 	o.OpenCount, _ = a.store.OpenFindingCount(ctx)
 	o.Banners = a.banners(ctx)
@@ -162,4 +163,23 @@ func (a *App) banners(ctx context.Context) []banner {
 		out = append(out, banner{Text: a.lang.T("alert_banner", sit, chat)})
 	}
 	return out
+}
+
+// signalsWeek says how many signals came this week, with the right Czech
+// plural (1 nová zpráva, 2–4 nové zprávy, 5+ nových zpráv).
+func (a *App) signalsWeek(n int) string {
+	if n == 0 {
+		return ""
+	}
+	if a.lang.code != "cs" {
+		return a.lang.T("sig_week", n)
+	}
+	words := "nových zpráv"
+	switch {
+	case n == 1:
+		words = "nová zpráva"
+	case n >= 2 && n <= 4:
+		words = "nové zprávy"
+	}
+	return a.lang.T("sig_week", fmt.Sprintf("%d %s", n, words))
 }

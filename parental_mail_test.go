@@ -203,3 +203,12 @@ func TestPracticeGmailSignalsFindingsAndSending(t *testing.T) {
 		t.Fatal("platforms page")
 	}
 }
+
+func TestSignalsWeekPlural(t *testing.T) {
+	a := newApp(testStore(t), nil, Config{Language: "cs"})
+	for n, want := range map[int]string{0: "", 1: "1 nová zpráva", 3: "3 nové zprávy", 5: "5 nových zpráv"} {
+		if got := a.signalsWeek(n); !strings.Contains(got, want) {
+			t.Errorf("%d: %q", n, got)
+		}
+	}
+}
