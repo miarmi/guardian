@@ -39,9 +39,13 @@ func (s *store) Situation(ctx context.Context, id int64) (Situation, error) {
 const defaultsVersion = 2
 
 // SeedSituations puts the default situations in place: on a new database
-// it adds them; when the stored set is older, it hides the old defaults
-// (their findings stay) and adds the new ones. Added situations stay.
+// it adds them; when the stored set is older, it replaces the old defaults
+// and adds the new ones. Replaced defaults go away with their findings
+// (criterion 14); added situations stay.
 func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error {
+	if err := s.removeRetiredDefaults(ctx); err != nil {
+		return err
+	}
 	n, err := s.count(ctx, "SELECT COUNT(*) FROM situations")
 	if err != nil {
 		return err
@@ -71,6 +75,29 @@ func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error 
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES ('situations_version', ?)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, strconv.Itoa(defaultsVersion)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.removeRetiredDefaults(ctx)
+}
+
+// removeRetiredDefaults deletes default situations that a newer set
+// replaced, and their findings. Only a replacement marks a default as
+// deleted (defaults can't be deleted by hand), so nothing else is touched.
+// It also cleans up databases that were upgraded before findings went along.
+func (s *store) removeRetiredDefaults(ctx context.Context) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	const retired = "SELECT id FROM situations WHERE builtin = 1 AND deleted = 1"
+	if _, err := tx.ExecContext(ctx, "DELETE FROM findings WHERE situation_id IN ("+retired+")"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM situations WHERE builtin = 1 AND deleted = 1"); err != nil {
 		return err
 	}
 	return tx.Commit()

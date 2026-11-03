@@ -334,8 +334,10 @@ func TestNewDefaultSetReplacesTheOld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.db.ExecContext(ctx, `INSERT INTO findings (chat, situation_id, created_at, updated_at, reason, quotes) VALUES ('c', 1, 1, 1, 'r', '[]')`); err != nil {
-		t.Fatal(err)
+	for _, sit := range []int64{1, added} {
+		if _, err := st.db.ExecContext(ctx, `INSERT INTO findings (chat, situation_id, created_at, updated_at, reason, quotes) VALUES ('c', ?, 1, 1, 'r', '[]')`, sit); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i := 0; i < 2; i++ { // the second run changes nothing
 		if err := st.SeedSituations(ctx, defaultSituationsCS); err != nil {
@@ -355,10 +357,9 @@ func TestNewDefaultSetReplacesTheOld(t *testing.T) {
 			t.Errorf("default %q listed %d times", d.Name, names[d.Name])
 		}
 	}
-	if fs, _ := st.Findings(ctx); len(fs) != 1 || fs[0].Situation.Name != "Výhrůžky" {
-		t.Fatal("the old default's finding is gone")
+	if fs, _ := st.Findings(ctx); len(fs) != 1 || fs[0].Situation.ID != added {
+		t.Fatalf("want only the added situation's finding left, got %+v", fs)
 	}
-	_ = added
 }
 
 func TestPreviewGetsTheDefaultSet(t *testing.T) {
@@ -367,5 +368,24 @@ func TestPreviewGetsTheDefaultSet(t *testing.T) {
 	sits, _ := st.Situations(context.Background())
 	if len(sits) != len(defaultSituationsEN) {
 		t.Fatalf("a preview has %d situations, want the %d defaults", len(sits), len(defaultSituationsEN))
+	}
+}
+
+func TestAlreadyUpgradedDatabaseLosesRetiredFindings(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	// Upgraded before findings went along: a hidden old default with a finding.
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin, deleted) VALUES ('Výhrůžky', 'd', 'medium', 'alert', 0, 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	st.db.ExecContext(ctx, `INSERT INTO findings (chat, situation_id, created_at, updated_at, reason, quotes) VALUES ('c', 1, 1, 1, 'r', '[]')`)
+	if err := st.SeedSituations(ctx, defaultSituationsCS); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := st.count(ctx, "SELECT COUNT(*) FROM findings"); n != 0 {
+		t.Fatalf("%d findings of a replaced default left", n)
+	}
+	if n, _ := st.count(ctx, "SELECT COUNT(*) FROM situations WHERE deleted = 1"); n != 0 {
+		t.Fatal("replaced default still stored")
 	}
 }
