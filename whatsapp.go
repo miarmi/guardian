@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	wastore "go.mau.fi/whatsmeow/store"
@@ -43,6 +44,9 @@ func newWhatsApp(ctx context.Context, secretsDir string, st *store) (*whatsapp, 
 		return nil, err
 	}
 	wastore.SetOSInfo(deviceName, [3]uint32{1, 0, 0})
+	// With an unknown platform the phone ignores the name and shows "Other
+	// device" ("Jiné zařízení"); as a desktop app it shows just "Guardian".
+	wastore.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
 	wastore.DeviceProps.RequireFullSync = boolPtr(true)
 	container, err := sqlstore.New(ctx, "sqlite3",
 		"file:"+secretsDir+"/whatsapp.db?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000", waLog.Noop)
