@@ -170,15 +170,15 @@ func (a *App) platformsPage(w http.ResponseWriter, r *http.Request) {
 // phone or in the platforms' parent tools (criterion 40). Research, Nov 2026.
 var phoneSteps = map[string][]string{
 	"cs": {
-		"Na iPhonu – Bezpečná komunikace: Nastavení → Čas u obrazovky → (dítě) → Bezpečná komunikace → zapnuto. Rozmaže nahé fotky ve Zprávách, AirDropu a FaceTimu a nabídne dítěti pomoc.",
-		"Na iPhonu – schvalování nových kontaktů: Nastavení → Čas u obrazovky → (dítě) → Omezení komunikace → Schvalovat nové kontakty. Dítě pak nemůže psát nikomu novému bez tvého souhlasu.",
+		"Apple iPhone – Bezpečná komunikace: Nastavení → Čas u obrazovky → (dítě) → Bezpečná komunikace → zapnuto. Rozmaže nahé fotky ve Zprávách, AirDropu a FaceTimu a nabídne dítěti pomoc.",
+		"Apple iPhone – schvalování nových kontaktů: Nastavení → Čas u obrazovky → (dítě) → Omezení komunikace → Schvalovat nové kontakty. Dítě pak nemůže psát nikomu novému bez tvého souhlasu.",
 		"Na Discordu – Nastavení → Soukromí a bezpečnost → Filtr citlivých médií: „Blokovat“ pro zprávy od nepřátel i přátel. A zprávy od lidí ze serverů vypnout.",
 		"Na Instagramu – účet pro teenagery: soukromý účet, zprávy jen od lidí, které dítě sleduje. Dohled zapneš v Centru rodiny.",
 		"Na Robloxu – rodičovský účet: chat jen s přáteli (nebo vypnutý) a schvalování nových přátel.",
 	},
 	"en": {
-		"On the iPhone – Communication Safety: Settings → Screen Time → (child) → Communication Safety → on. It blurs nude photos in Messages, AirDrop and FaceTime and offers the child help.",
-		"On the iPhone – approving new contacts: Settings → Screen Time → (child) → Communication Limits → Ask to approve new contacts. The child can't text anyone new without your OK.",
+		"Apple iPhone – Communication Safety: Settings → Screen Time → (child) → Communication Safety → on. It blurs nude photos in Messages, AirDrop and FaceTime and offers the child help.",
+		"Apple iPhone – approving new contacts: Settings → Screen Time → (child) → Communication Limits → Ask to approve new contacts. The child can't text anyone new without your OK.",
 		"On Discord – Settings → Privacy & Safety → Sensitive media filter: “Block” for messages from non-friends and friends. And turn off messages from server members.",
 		"On Instagram – teen account: private, messages only from people the child follows. Turn on supervision in the Family Center.",
 		"On Roblox – parent account: chat with friends only (or off) and approving new friends.",

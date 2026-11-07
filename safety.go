@@ -2,7 +2,6 @@ package guardian
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -100,14 +99,15 @@ func (s *store) MarkStrangersSeen(ctx context.Context) error {
 	return err
 }
 
-// UnseenStranger is the newest stranger the parents haven't seen in Nálezy.
-func (s *store) UnseenStranger(ctx context.Context) (who string, more int, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT who, (SELECT COUNT(*) - 1 FROM strangers WHERE seen = 0)
-		FROM strangers WHERE seen = 0 ORDER BY at DESC, id DESC LIMIT 1`).Scan(&who, &more)
-	if err == sql.ErrNoRows {
-		return "", 0, nil
+// UnseenStrangers names the strangers the parents haven't seen in Nálezy,
+// newest first, at most limit of them, and how many more there are.
+func (s *store) UnseenStrangers(ctx context.Context, limit int) (who []string, more int, err error) {
+	who, err = queryAll(ctx, s.db, scanString, "SELECT who FROM strangers WHERE seen = 0 ORDER BY at DESC, id DESC LIMIT ?", limit)
+	if err != nil {
+		return nil, 0, err
 	}
-	return who, more, err
+	n, err := s.count(ctx, "SELECT COUNT(*) FROM strangers WHERE seen = 0")
+	return who, max(0, n-len(who)), err
 }
 
 func (a *App) strangerWrote(ctx context.Context, chat, who string) {

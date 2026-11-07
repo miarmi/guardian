@@ -164,9 +164,11 @@ func (a *App) banners(ctx context.Context) []banner {
 	if sit, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
 		out = append(out, banner{Text: a.lang.T("alert_banner", sit, chat)})
 	}
-	if who, more, _ := a.store.UnseenStranger(ctx); who != "" {
+	// One banner per stranger (criterion 37), at most three.
+	whos, more, _ := a.store.UnseenStrangers(ctx, 3)
+	for i, who := range whos {
 		b := banner{Text: a.lang.T("stranger_banner", who)}
-		if more > 0 {
+		if i == len(whos)-1 && more > 0 {
 			b.More = a.lang.T("banner_more", more)
 		}
 		out = append(out, b)
