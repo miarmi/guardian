@@ -18,6 +18,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /whatsapp/status.json", a.statusJSON)
 	mux.HandleFunc("GET /whatsapp/disconnect", a.disconnectPage)
 	mux.HandleFunc("POST /whatsapp/disconnect", a.disconnect)
+	mux.HandleFunc("POST /whatsapp/privacy", a.fixPrivacy)
 	mux.HandleFunc("GET /whatsapp/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusSeeOther) })
 
 	// Files and the home-screen app (assets.go).
@@ -43,6 +44,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /settings/gmail", a.saveGmail)
 	mux.HandleFunc("POST /settings/gmail/test", a.testGmail)
 	mux.HandleFunc("GET /platforms", a.platformsPage)
+	mux.HandleFunc("POST /platforms/checked", a.phoneChecked)
 
 	// Situace and Nálezy (pages_situations.go, pages_findings.go).
 	mux.HandleFunc("GET /situations", a.situationsPage)
@@ -52,6 +54,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /findings", a.findingsPage)
 	mux.HandleFunc("POST /findings/{id}/{status}", a.markFinding)
 	mux.HandleFunc("POST /requests/{id}/{status}", a.markHelpRequest)
+	mux.HandleFunc("POST /strangers/{id}/{status}", a.markStranger)
 
 	// The child's pages, outside the lab login (pages_kid.go).
 	mux.HandleFunc("GET /kid/style.css", a.kidStyle)

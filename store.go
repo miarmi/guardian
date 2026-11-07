@@ -86,11 +86,14 @@ var migrations = []string{
 	// When the child's e-mail may go out (criterion 25): 0 waits for the
 	// parents' digest, otherwise the time the parents were told (ns).
 	`ALTER TABLE findings ADD COLUMN child_mail_due INTEGER NOT NULL DEFAULT 0`,
+	// A situation that isn't the AI model's: "photo" is criterion 38.
+	`ALTER TABLE situations ADD COLUMN kind TEXT NOT NULL DEFAULT ''`,
 }
 
-// laterTables came with phases 3 and 5 and are created after the migrations.
+// laterTables came with phases 3, 5 and 6 and are created after the migrations.
 var laterTables = []string{
 	signalsTable,
+	strangersTable,
 	`CREATE TABLE IF NOT EXISTS help_requests (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		created_at INTEGER NOT NULL,

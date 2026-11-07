@@ -26,6 +26,16 @@
     </li>
     {{end}}
   </ul>
+  <section class="phone-check" id="phone" aria-labelledby="phone-heading">
+    <h2 id="phone-heading">{{t "phone_part"}}</h2>
+    <p class="note">{{t "phone_intro"}}</p>
+    <ol class="steps">
+      {{range .Steps}}<li>{{.}}</li>
+      {{end}}
+    </ol>
+    {{if .Checked}}<p class="status-line ok">{{t "phone_last" .Checked}}</p>{{end}}
+    <form method="post" action="/platforms/checked"><button type="submit">{{t "phone_checked_btn"}}</button></form>
+  </section>
 </main>
 <footer>{{t "version"}}: {{.Version}}</footer>
 </body>

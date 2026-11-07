@@ -224,7 +224,8 @@ func (z *analyzer) enabledSituations(ctx context.Context) ([]Situation, error) {
 	}
 	var on []Situation
 	for _, s := range sits {
-		if s.Enabled {
+		// The photo situation is judged inside Guardian, never by the model.
+		if s.Enabled && s.Kind == "" {
 			on = append(on, s)
 		}
 	}

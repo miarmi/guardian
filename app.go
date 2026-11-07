@@ -91,6 +91,16 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		a.stop = cancel
 		go a.an.loop(loopCtx)
 		go a.nt.digestLoop(loopCtx)
+		go a.privacyLoop(loopCtx)
+		go func() {
+			// The photo model takes a moment to load; strangers are watched meanwhile.
+			judge, err := newNudityModel()
+			if err != nil {
+				log.Printf("photos: %v", err)
+				return
+			}
+			wa.watch(a, judge)
+		}()
 		return a, nil
 	case cfg.Practice:
 		p := newPractice(st)
@@ -157,8 +167,14 @@ func newApp(st *store, wa connector, cfg Config) *App {
 			a.an.practiceBox = &practiceBox{errText: l.T("practice_gmail_down")}
 		}
 	}
+	if wa != nil {
+		wa.watch(a, nil)
+	}
 	// Previews too, so a preview shows the default set production will get.
 	if err := st.SeedSituations(context.Background(), l.situations); err != nil {
+		log.Printf("situations: %v", err)
+	}
+	if err := st.EnsurePhotoSituation(context.Background(), Situation{Name: l.T("photo_sit_name"), Description: l.T("photo_sit_desc")}); err != nil {
 		log.Printf("situations: %v", err)
 	}
 	return a

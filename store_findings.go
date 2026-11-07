@@ -103,7 +103,7 @@ func scanFinding(sc scanner) (Finding, error) {
 	x := &f.Situation
 	if err := sc.Scan(&f.ID, &f.Chat, &f.ChatName, &created, &updated, &f.Reason, &quotes, &f.Status, &f.Seen,
 		&f.ChildHelp, &f.ChildMessage, &helpAt,
-		&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin); err != nil {
+		&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin, &x.Kind); err != nil {
 		return f, err
 	}
 	f.Created, f.Updated = time.Unix(created, 0), time.Unix(updated, 0)

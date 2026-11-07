@@ -11,9 +11,10 @@ import (
 
 type findingsData struct {
 	page
-	Findings []Finding
-	Requests []HelpRequest // the child's requests through the help link (criterion 30)
-	Signals  []Signal      // from parental e-mails (criterion 34)
+	Findings  []Finding
+	Requests  []HelpRequest // the child's requests through the help link (criterion 30)
+	Signals   []Signal      // from parental e-mails (criterion 34)
+	Strangers []Stranger    // criterion 37
 }
 
 func (a *App) findingsPage(w http.ResponseWriter, r *http.Request) {
@@ -33,9 +34,14 @@ func (a *App) findingsPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	a.render(w, "findings", http.StatusOK, findingsData{page: a.page(), Findings: fs, Requests: reqs, Signals: sigs})
+	strangers, err := a.store.Strangers(ctx)
+	if err != nil {
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	a.render(w, "findings", http.StatusOK, findingsData{page: a.page(), Findings: fs, Requests: reqs, Signals: sigs, Strangers: strangers})
 	// Opening the page counts as opening the findings (criteria 18, 26, 30).
-	if err := errors.Join(a.store.MarkFindingsSeen(ctx), a.store.MarkHelpSeen(ctx), a.store.MarkHelpRequestsSeen(ctx)); err != nil {
+	if err := errors.Join(a.store.MarkFindingsSeen(ctx), a.store.MarkHelpSeen(ctx), a.store.MarkHelpRequestsSeen(ctx), a.store.MarkStrangersSeen(ctx)); err != nil {
 		log.Printf("findings: marking seen: %v", err)
 	}
 }

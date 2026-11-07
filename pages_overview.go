@@ -18,6 +18,8 @@ type indexData struct {
 	Connector connectorView
 	Chats     []ChatSummary
 	Analysis  overviewAnalysis
+	Privacy   privacyView // criterion 39
+	Phone     string      // criterion 40's reminder, "" when none is due
 }
 
 func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,7 @@ func (a *App) indexPage(w http.ResponseWriter, r *http.Request) {
 	labelSameNames(chats)
 	a.render(w, "index", http.StatusOK, indexData{
 		page: a.page(), Preview: a.preview, Connector: a.connector(), Chats: chats,
-		Analysis: a.overviewAnalysis(r.Context()),
+		Analysis: a.overviewAnalysis(r.Context()), Privacy: a.privacyView(r), Phone: a.phoneReminder(r.Context()),
 	})
 }
 
@@ -161,6 +163,13 @@ func (a *App) banners(ctx context.Context) []banner {
 	}
 	if sit, chat, ok, _ := a.store.UnseenAlert(ctx); ok {
 		out = append(out, banner{Text: a.lang.T("alert_banner", sit, chat)})
+	}
+	if who, more, _ := a.store.UnseenStranger(ctx); who != "" {
+		b := banner{Text: a.lang.T("stranger_banner", who)}
+		if more > 0 {
+			b.More = a.lang.T("banner_more", more)
+		}
+		out = append(out, b)
 	}
 	return out
 }

@@ -12,6 +12,13 @@ type connector interface {
 	StartPairing(ctx context.Context) error
 	Disconnect(ctx context.Context) error
 	Close()
+	// Privacy reads the child's WhatsApp privacy settings (criterion 39);
+	// SetPrivacySafe sets them safely, only when the parents press the button.
+	Privacy(ctx context.Context) (privacy, error)
+	SetPrivacySafe(ctx context.Context) error
+	// watch tells the connector whom to report strangers, photos and
+	// privacy changes to, and who judges photos (criteria 37–39).
+	watch(ev safetyEvents, judge photoJudge)
 }
 
 // waState is what the connector overview shows.

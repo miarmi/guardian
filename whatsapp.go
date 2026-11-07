@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -37,6 +38,8 @@ type whatsapp struct {
 	qr     string // current QR code payload while pairing
 	qrExp  time.Time
 	cancel context.CancelFunc
+	ev     safetyEvents // criteria 37–39; nil until the app is ready
+	judge  photoJudge
 }
 
 func newWhatsApp(ctx context.Context, secretsDir string, st *store) (*whatsapp, error) {
@@ -221,6 +224,9 @@ func (w *whatsapp) handle(evt any) {
 		w.mu.Unlock()
 		_ = w.st.SetSetting(ctx, settingRemoved, "0")
 		log.Print("whatsapp: connected")
+		if ev, _ := w.watching(); ev != nil {
+			go ev.privacyChanged(context.Background())
+		}
 	case *events.LoggedOut:
 		// The child removed the device on the phone; whatsmeow drops the session.
 		w.mu.Lock()
@@ -233,7 +239,19 @@ func (w *whatsapp) handle(evt any) {
 		}
 		log.Print("whatsapp: device removed by the phone")
 	case *events.Message:
+		first, _ := w.st.ChatIsNew(ctx, e.Info.Chat.ToNonAD().String())
 		w.saveMessage(ctx, e)
+		w.inspect(ctx, e, first)
+	case *events.GroupInfo:
+		w.groupChange(ctx, e)
+	case *events.JoinedGroup:
+		if e.Type == "new" && e.Reason != "invite" && e.Sender != nil {
+			w.addedBy(ctx, e.JID, e.Name, *e.Sender, e.SenderPN, e.Notify)
+		}
+	case *events.PrivacySettings:
+		if ev, _ := w.watching(); ev != nil {
+			go ev.privacyChanged(context.Background())
+		}
 	}
 }
 
@@ -363,3 +381,197 @@ func describe(m *waE2E.Message) (kind, text string) {
 }
 
 func boolPtr(b bool) *bool { return &b }
+
+// --- phase 6: strangers, photos and privacy (criteria 37–39) ---
+
+func (w *whatsapp) watch(ev safetyEvents, judge photoJudge) {
+	w.mu.Lock()
+	w.ev, w.judge = ev, judge
+	w.mu.Unlock()
+}
+
+func (w *whatsapp) watching() (safetyEvents, photoJudge) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.ev, w.judge
+}
+
+// maxPhoto is the largest photo Guardian looks at; WhatsApp photos are far
+// smaller.
+const maxPhoto = 10 << 20
+
+// inspect looks at a live incoming message: a stranger writing first, and a
+// received photo, which is downloaded into memory only, judged inside
+// Guardian and dropped. It is never saved, shown or sent anywhere.
+func (w *whatsapp) inspect(ctx context.Context, e *events.Message, first bool) {
+	ev, judge := w.watching()
+	client := w.currentClient()
+	chat := e.Info.Chat.ToNonAD()
+	if ev == nil || client == nil || e.Info.IsFromMe || chat.Server == types.BroadcastServer {
+		return
+	}
+	isGroup := chat.Server == types.GroupServer
+	known := w.isContact(ctx, client, e.Info.Sender, e.Info.SenderAlt)
+	who := w.who(ctx, client, e.Info.Sender, e.Info.SenderAlt, e.Info.PushName)
+	if !isGroup && first && !known {
+		ev.strangerWrote(ctx, chat.String(), who)
+	}
+	img := e.Message.GetImageMessage()
+	if img == nil || judge == nil || img.GetFileLength() > maxPhoto {
+		return
+	}
+	chatName, _ := w.st.ChatName(ctx, chat.String())
+	go func() {
+		dctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		data, err := client.Download(dctx, img)
+		if err != nil {
+			log.Printf("whatsapp: photo: %v", err)
+			return
+		}
+		nude, err := judge.LooksNude(data)
+		clear(data)
+		if err != nil {
+			log.Printf("whatsapp: photo: %v", err)
+			return
+		}
+		ev.photoReceived(dctx, chat.String(), chatName, who, known, nude)
+	}()
+}
+
+// groupChange notices the child being added to a group by someone.
+func (w *whatsapp) groupChange(ctx context.Context, e *events.GroupInfo) {
+	client := w.currentClient()
+	if client == nil || e.Sender == nil || e.JoinReason == "invite" {
+		return
+	}
+	own := []types.JID{}
+	if client.Store.ID != nil {
+		own = append(own, client.Store.ID.ToNonAD())
+	}
+	if lid := client.Store.GetLID(); !lid.IsEmpty() {
+		own = append(own, lid.ToNonAD())
+	}
+	for _, j := range e.Join {
+		if slices.Contains(own, j.ToNonAD()) {
+			name := ""
+			if e.Name != nil {
+				name = e.Name.Name
+			}
+			w.addedBy(ctx, e.JID, name, *e.Sender, e.SenderPN, "")
+			return
+		}
+	}
+}
+
+func (w *whatsapp) addedBy(ctx context.Context, group types.JID, name string, by types.JID, byPN *types.JID, push string) {
+	ev, _ := w.watching()
+	client := w.currentClient()
+	if ev == nil || client == nil {
+		return
+	}
+	if client.Store.ID != nil && by.User == client.Store.ID.User {
+		return // the child made the group
+	}
+	alt := types.EmptyJID
+	if byPN != nil {
+		alt = *byPN
+	}
+	if w.isContact(ctx, client, by, alt) {
+		return
+	}
+	if name == "" {
+		if info, err := client.GetGroupInfo(ctx, group); err == nil {
+			name = info.Name
+		}
+	}
+	_ = w.st.EnsureChat(ctx, group.String(), name, true, false)
+	ev.addedToGroup(ctx, group.String(), name, w.who(ctx, client, by, alt, push))
+}
+
+// phoneJID returns the phone-number address for a sender, which may come as
+// a LID (WhatsApp's hidden id) with or without the number beside it.
+func phoneJID(ctx context.Context, client *whatsmeow.Client, jid, alt types.JID) types.JID {
+	for _, j := range []types.JID{jid, alt} {
+		if j.Server == types.DefaultUserServer {
+			return j.ToNonAD()
+		}
+	}
+	if jid.Server == types.HiddenUserServer {
+		if pn, err := client.Store.LIDs.GetPNForLID(ctx, jid.ToNonAD()); err == nil && !pn.IsEmpty() {
+			return pn
+		}
+	}
+	return types.EmptyJID
+}
+
+// isContact says whether the person is saved in the child's contacts: only
+// address-book contacts have a full or first name there.
+func (w *whatsapp) isContact(ctx context.Context, client *whatsmeow.Client, jid, alt types.JID) bool {
+	for _, j := range []types.JID{phoneJID(ctx, client, jid, alt), jid.ToNonAD()} {
+		if j.IsEmpty() {
+			continue
+		}
+		if c, err := client.Store.Contacts.GetContact(ctx, j); err == nil && c.Found && (c.FullName != "" || c.FirstName != "") {
+			return true
+		}
+	}
+	return false
+}
+
+// who names a person for the parents: their WhatsApp name and number.
+func (w *whatsapp) who(ctx context.Context, client *whatsmeow.Client, jid, alt types.JID, push string) string {
+	number := ""
+	if pn := phoneJID(ctx, client, jid, alt); !pn.IsEmpty() {
+		number = formatNumber(pn.User)
+	}
+	if push == "" {
+		if c, err := client.Store.Contacts.GetContact(ctx, jid.ToNonAD()); err == nil {
+			push = c.PushName
+		}
+	}
+	switch {
+	case push != "" && number != "":
+		return push + " (" + number + ")"
+	case number != "":
+		return number
+	case push != "":
+		return push
+	}
+	return "?"
+}
+
+// Privacy reads the settings; whatsmeow keeps them and updates them when
+// they change on the phone.
+func (w *whatsapp) Privacy(ctx context.Context) (privacy, error) {
+	client := w.currentClient()
+	if client == nil {
+		return privacy{}, errors.New("not connected")
+	}
+	p, err := client.TryFetchPrivacySettings(ctx, false)
+	if err != nil {
+		return privacy{}, err
+	}
+	return privacy{GroupAdd: string(p.GroupAdd), Profile: string(p.Profile), Status: string(p.Status),
+		LastSeen: string(p.LastSeen), CallAdd: string(p.CallAdd), Messages: string(p.Messages)}, nil
+}
+
+// SetPrivacySafe sets every risky setting to its safe value. It runs only
+// when the parents press "Nastavit bezpečně".
+func (w *whatsapp) SetPrivacySafe(ctx context.Context) error {
+	client := w.currentClient()
+	if client == nil {
+		return errors.New("not connected")
+	}
+	now, err := w.Privacy(ctx)
+	if err != nil {
+		return err
+	}
+	for _, k := range now.risky() {
+		if _, err := client.SetPrivacySetting(ctx, types.PrivacySettingType(k), types.PrivacySetting(safeValue[k])); err != nil {
+			return fmt.Errorf("%s: %w", k, err)
+		}
+	}
+	_, err = client.TryFetchPrivacySettings(ctx, true)
+	return err
+}

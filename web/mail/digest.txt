@@ -17,6 +17,9 @@ Guardian
 {{if .Signals}}{{.L.T "digest_signals"}}
 {{range .Signals}}- {{.Platform}} ({{.Received.Format "2. 1."}}): {{.Summary}}
 {{end}}
+{{end}}{{if .Strangers}}{{.L.T "strangers_part"}}:
+{{range .Strangers}}- {{if eq .Kind "group"}}{{$.L.T "stranger_added" .Who .ChatName}}{{else}}{{$.L.T "stranger_writes" .Who}}{{end}} ({{.At.Format "2. 1."}})
+{{end}}
 {{end}}{{.L.T "digest_chats" .Chats}}
 
 {{.L.T "digest_open_findings"}}: {{.Link}}

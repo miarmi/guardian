@@ -20,6 +20,15 @@
 </div>
 {{end}}
 {{end}}
+{{if .Strangers}}
+<p style="margin:0 0 12px;font-weight:700">{{.L.T "strangers_part"}}</p>
+{{range .Strangers}}
+<div style="border-left:4px solid #b3261e;padding:4px 0 4px 12px;margin:0 0 12px">
+<p style="margin:0;color:#56666d">{{.At.Format "2. 1."}}</p>
+<p style="margin:4px 0 0">{{if eq .Kind "group"}}{{$.L.T "stranger_added" .Who .ChatName}}{{else}}{{$.L.T "stranger_writes" .Who}}{{end}}</p>
+</div>
+{{end}}
+{{end}}
 {{if .Findings}}
 <p style="margin:0 0 12px">{{.L.T "digest_intro"}}</p>
 {{range .Findings}}

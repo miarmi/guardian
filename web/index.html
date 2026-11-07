@@ -47,9 +47,26 @@
           {{end}}
         </div>
         {{end}}
+        {{with $.Privacy}}{{if .Shown}}
+        <div class="privacy" id="privacy">
+          <h3>{{t "privacy_heading"}}</h3>
+          {{if .Done}}<p class="status-line ok" role="status">{{t "privacy_done"}}</p>{{end}}
+          {{if .Error}}<p class="status-line warn">{{.Error}}</p>{{end}}
+          {{if .Rows}}
+          <ul class="privacy-rows">
+            {{range .Rows}}<li class="{{if .Risky}}risky{{end}}"><span class="pv-label">{{.Label}}</span> <span class="pv-value">{{.Value}}</span>{{if .Risky}} <span class="chip alert-chip">{{t "pv_risky"}}</span>{{end}}</li>
+            {{end}}
+          </ul>
+          {{if .AllSafe}}<p class="status-line ok">{{t "privacy_all_safe"}}</p>
+          {{else}}<form method="post" action="/whatsapp/privacy"><button type="submit">{{t "privacy_fix"}}</button></form>
+          <p class="note">{{t "privacy_note"}}</p>{{end}}
+          {{end}}
+        </div>
+        {{end}}{{end}}
       </li>
     </ul>
     <a class="more-link" href="/platforms">{{t "plat_link"}}</a>
+    {{with .Phone}}<a class="more-link remind" href="/platforms#phone">{{.}}</a>{{end}}
   </section>
 
   <section aria-labelledby="analysis-heading">

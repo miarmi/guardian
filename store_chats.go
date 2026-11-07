@@ -151,3 +151,9 @@ func (s *store) MarkAnalyzed(ctx context.Context, chat string, upto int64) error
 		ON CONFLICT (chat) DO UPDATE SET upto = MAX(upto, excluded.upto)`, chat, upto)
 	return err
 }
+
+// ChatIsNew says whether no message of the chat is kept yet.
+func (s *store) ChatIsNew(ctx context.Context, chat string) (bool, error) {
+	n, err := s.count(ctx, "SELECT COUNT(*) FROM messages WHERE chat = ?", chat)
+	return n == 0, err
+}

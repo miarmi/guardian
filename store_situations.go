@@ -2,6 +2,7 @@ package guardian
 
 import (
 	"context"
+	"database/sql"
 	"strconv"
 )
 
@@ -14,13 +15,14 @@ type Situation struct {
 	Action      string // record, digest, alert
 	Enabled     bool
 	Builtin     bool
+	Kind        string // "" for the AI model's situations, "photo" for criterion 38
 }
 
-const situationCols = "id, name, description, sensitivity, action, enabled, builtin"
+const situationCols = "id, name, description, sensitivity, action, enabled, builtin, kind"
 
 func scanSituation(sc scanner) (Situation, error) {
 	var x Situation
-	err := sc.Scan(&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin)
+	err := sc.Scan(&x.ID, &x.Name, &x.Description, &x.Sensitivity, &x.Action, &x.Enabled, &x.Builtin, &x.Kind)
 	return x, err
 }
 
@@ -64,7 +66,7 @@ func (s *store) SeedSituations(ctx context.Context, defaults []Situation) error 
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, "UPDATE situations SET deleted = 1, enabled = 0 WHERE builtin = 1 AND deleted = 0"); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE situations SET deleted = 1, enabled = 0 WHERE builtin = 1 AND deleted = 0 AND kind = ''"); err != nil {
 		return err
 	}
 	for _, d := range defaults {
@@ -123,4 +125,26 @@ func (s *store) UpdateSituation(ctx context.Context, x Situation) error {
 func (s *store) DeleteSituation(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE situations SET deleted = 1, enabled = 0 WHERE id = ? AND builtin = 0", id)
 	return err
+}
+
+// EnsurePhotoSituation adds "Možná nahá fotka" (criterion 38) when it
+// isn't there. It is built in, so it can be switched off but not deleted,
+// and a new default set doesn't replace it.
+func (s *store) EnsurePhotoSituation(ctx context.Context, x Situation) error {
+	n, err := s.count(ctx, "SELECT COUNT(*) FROM situations WHERE kind = 'photo' AND deleted = 0")
+	if err != nil || n > 0 {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO situations (name, description, sensitivity, action, enabled, builtin, kind)
+		VALUES (?, ?, 'medium', 'alert', 1, 1, 'photo')`, x.Name, x.Description)
+	return err
+}
+
+// PhotoSituation returns the situation of criterion 38.
+func (s *store) PhotoSituation(ctx context.Context) (Situation, bool, error) {
+	x, err := scanSituation(s.db.QueryRowContext(ctx, "SELECT "+situationCols+" FROM situations WHERE kind = 'photo' AND deleted = 0 ORDER BY id LIMIT 1"))
+	if err == sql.ErrNoRows {
+		return Situation{}, false, nil
+	}
+	return x, err == nil, err
 }

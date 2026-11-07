@@ -79,6 +79,36 @@
   {{else}}
   <p class="empty">{{t "fin_none"}}</p>
   {{end}}
+  {{if .Strangers}}
+  <section class="strangers" id="strangers" aria-labelledby="strangers-heading">
+    <h2 id="strangers-heading">{{t "strangers_part"}}</h2>
+    <ul class="findings" aria-label="{{t "strangers_part"}}">
+      {{range .Strangers}}
+      <li class="finding{{if .OK}} closed{{else}} serious{{end}}">
+        {{if not .OK}}
+        <div class="finding-head"><span class="sit-name">{{.Who}}</span></div>
+        <p class="reason">{{if eq .Kind "group"}}{{t "stranger_added" .Who .ChatName}}{{else}}{{t "stranger_writes" .Who}}{{end}}</p>
+        <p class="chat-meta">{{if eq .Kind "group"}}{{t "fin_in_chat" .ChatName}} · {{end}}{{when .At}}</p>
+        <div class="choices">
+          <form method="post" action="/strangers/{{.ID}}/ok"><button type="submit">{{t "stranger_ok"}}</button></form>
+        </div>
+        {{else}}
+        <details>
+          <summary>
+            <span class="sit-name">{{.Who}}</span>
+            <span class="sit-meta">{{when .At}} · {{t "stranger_ok"}}</span>
+          </summary>
+          <p class="reason">{{if eq .Kind "group"}}{{t "stranger_added" .Who .ChatName}}{{else}}{{t "stranger_writes" .Who}}{{end}}</p>
+          <div class="choices">
+            <form method="post" action="/strangers/{{.ID}}/open"><button type="submit" class="secondary">{{t "fin_reopen"}}</button></form>
+          </div>
+        </details>
+        {{end}}
+      </li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
   {{if .Signals}}
   <section class="signals" id="signals" aria-labelledby="signals-heading">
     <h2 id="signals-heading">{{t "sig_title"}}</h2>
