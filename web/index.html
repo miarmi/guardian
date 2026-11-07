@@ -26,7 +26,7 @@
       <a href="/settings">{{t "nav_settings"}}</a>
     </nav>
   </header>
-  {{range .Analysis.Banners}}<a class="banner{{if .Child}} child{{end}}" href="/findings" role="alert">{{.Text}}{{with .More}} <span class="banner-more">{{.}}</span>{{end}} <span class="banner-go">{{t "open_arrow"}}</span></a>
+  {{range .Analysis.Banners}}<a class="banner{{if .Child}} child{{end}}" href="{{or .Href "/findings"}}" role="alert">{{.Text}}{{with .More}} <span class="banner-more">{{.}}</span>{{end}} <span class="banner-go">{{t "open_arrow"}}</span></a>
   {{end}}
 
   <section aria-labelledby="connectors-heading">
@@ -53,8 +53,9 @@
           {{if .Done}}<p class="status-line ok" role="status">{{t "privacy_done"}}</p>{{end}}
           {{if .Error}}<p class="status-line warn">{{.Error}}</p>{{end}}
           {{if .Rows}}
+          {{if not .AllSafe}}<p class="note">{{t "privacy_explain"}}</p>{{end}}
           <ul class="privacy-rows">
-            {{range .Rows}}<li class="{{if .Risky}}risky{{end}}"><span class="pv-label">{{.Label}}</span> <span class="pv-value">{{.Value}}</span>{{if .Risky}} <span class="chip alert-chip">{{t "pv_risky"}}</span>{{end}}</li>
+            {{range .Rows}}<li class="{{if .Risky}}risky{{end}}"><span class="pv-label">{{.Label}}</span> <span class="pv-value">{{.Value}}{{if .Risky}} <span class="chip risk-chip">{{t "pv_risky"}}</span>{{end}}</span></li>
             {{end}}
           </ul>
           {{if .AllSafe}}<p class="status-line ok">{{t "privacy_all_safe"}}</p>

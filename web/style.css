@@ -304,3 +304,33 @@ blockquote .who { display: block; font-size: 0.85rem; font-weight: 700; color: v
 .signal-list li { padding: 0.8rem 1.1rem; }
 .signal-meta { display: block; color: var(--muted); font-size: 0.9rem; font-weight: 700; }
 .signal p { margin: 0.3rem 0 0; }
+
+/* Phase 6: several alarms stack as one block. */
+.banner + .banner { margin-top: -0.95rem; border-top: 1px solid var(--line); border-top-left-radius: 0; border-top-right-radius: 0; }
+.banner:has(+ .banner) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+/* What to do next, under a finding. */
+.guide { margin: 0.6rem 0 0; padding: 0.7rem 0.9rem; border-radius: calc(var(--radius) - 4px); background: var(--sea-soft); font-size: 0.95rem; }
+
+/* WhatsApp privacy: one card, label left, value right; risky in honey, not alarm red. */
+.privacy { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--line); }
+.privacy h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
+.privacy-rows { list-style: none; margin: 0.5rem 0 0.75rem; padding: 0; display: block; }
+.privacy-rows li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 0.6rem 0; }
+.privacy-rows li:last-child { border-bottom: 0; }
+.pv-label { flex: 1 1 12rem; }
+.pv-value { font-weight: 700; text-align: right; margin-left: auto; }
+.risk-chip { background: var(--sun-soft); color: var(--sun-ink); border: 1px solid var(--sun); margin-left: 0.35rem; }
+
+/* A reminder, not navigation. */
+.more-link.remind { background: var(--sun-soft); border-color: var(--sun); color: var(--sun-ink); }
+.more-link.remind::before { content: "⏰"; margin-right: 0.5rem; }
+.more-link.remind { justify-content: flex-start; }
+.more-link.remind::after { margin-left: auto; }
+
+/* Phone checklist. */
+.phone-check { margin-top: 2rem; }
+.steps { padding-left: 1.4rem; display: grid; gap: 0.6rem; }
+.steps li { display: grid; gap: 0.2rem; }
+.step-path { font-size: 0.95rem; overflow-wrap: anywhere; }
+.step-why { color: var(--muted); font-size: 0.92rem; }

@@ -125,8 +125,8 @@ var platformTexts = []platformText{
 type platformsData struct {
 	page
 	Platforms []platform
-	Steps     []string // criterion 40: what only the child's phone can set
-	Checked   string   // when they were last checked, "" if never
+	Steps     []phoneStep // criterion 40: what only the child's phone can set
+	Checked   string      // when they were last checked, "" if never
 }
 
 func (a *App) platformsPage(w http.ResponseWriter, r *http.Request) {
@@ -166,21 +166,34 @@ func (a *App) platformsPage(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "platforms", http.StatusOK, data)
 }
 
-// phoneSteps are the settings Guardian can't make: they live on the child's
-// phone or in the platforms' parent tools (criterion 40). Research, Nov 2026.
-var phoneSteps = map[string][]string{
+// phoneStep is one setting Guardian can't make (criterion 40).
+type phoneStep struct{ Title, Path, Why string }
+
+// phoneSteps live on the child's phone or in the platforms' parent tools.
+// Research, Nov 2026.
+var phoneSteps = map[string][]phoneStep{
 	"cs": {
-		"Apple iPhone – Bezpečná komunikace: Nastavení → Čas u obrazovky → (dítě) → Bezpečná komunikace → zapnuto. Rozmaže nahé fotky ve Zprávách, AirDropu a FaceTimu a nabídne dítěti pomoc.",
-		"Apple iPhone – schvalování nových kontaktů: Nastavení → Čas u obrazovky → (dítě) → Omezení komunikace → Schvalovat nové kontakty. Dítě pak nemůže psát nikomu novému bez tvého souhlasu.",
-		"Na Discordu – Nastavení → Soukromí a bezpečnost → Filtr citlivých médií: „Blokovat“ pro zprávy od nepřátel i přátel. A zprávy od lidí ze serverů vypnout.",
-		"Na Instagramu – účet pro teenagery: soukromý účet, zprávy jen od lidí, které dítě sleduje. Dohled zapneš v Centru rodiny.",
-		"Na Robloxu – rodičovský účet: chat jen s přáteli (nebo vypnutý) a schvalování nových přátel.",
+		{"Apple iPhone: Bezpečnost komunikace", "Nastavení → Čas u obrazovky → (jméno dítěte) → Bezpečnost komunikace → zapnout",
+			"Rozmaže nahé fotky ve Zprávách, AirDropu a FaceTimu a nabídne dítěti pomoc."},
+		{"Apple iPhone: schvalování nových kontaktů", "Nastavení → Čas u obrazovky → (jméno dítěte) → Omezení komunikace → schvalovat nové kontakty",
+			"Dítě pak nemůže psát nikomu novému bez tvého souhlasu."},
+		{"Na Discordu: filtr citlivých médií", "Nastavení → Soukromí a bezpečnost → Filtr citlivých médií → Blokovat (od nepřátel i přátel)",
+			"A vypni zprávy od lidí ze serverů."},
+		{"Na Instagramu: účet pro teenagery", "Soukromý účet, zprávy jen od lidí, které dítě sleduje",
+			"Dohled zapneš v Centru rodiny."},
+		{"Na Robloxu: rodičovský účet", "Chat jen s přáteli (nebo vypnutý), schvalování nových přátel",
+			"Nastavíš v rodičovském účtu, propojeném s účtem dítěte."},
 	},
 	"en": {
-		"Apple iPhone – Communication Safety: Settings → Screen Time → (child) → Communication Safety → on. It blurs nude photos in Messages, AirDrop and FaceTime and offers the child help.",
-		"Apple iPhone – approving new contacts: Settings → Screen Time → (child) → Communication Limits → Ask to approve new contacts. The child can't text anyone new without your OK.",
-		"On Discord – Settings → Privacy & Safety → Sensitive media filter: “Block” for messages from non-friends and friends. And turn off messages from server members.",
-		"On Instagram – teen account: private, messages only from people the child follows. Turn on supervision in the Family Center.",
-		"On Roblox – parent account: chat with friends only (or off) and approving new friends.",
+		{"Apple iPhone: Communication Safety", "Settings → Screen Time → (child's name) → Communication Safety → on",
+			"Blurs nude photos in Messages, AirDrop and FaceTime and offers the child help."},
+		{"Apple iPhone: approving new contacts", "Settings → Screen Time → (child's name) → Communication Limits → ask to approve new contacts",
+			"The child can't text anyone new without your OK."},
+		{"On Discord: sensitive media filter", "Settings → Privacy & Safety → Sensitive media filter → Block (non-friends and friends)",
+			"And turn off messages from server members."},
+		{"On Instagram: teen account", "Private account, messages only from people the child follows",
+			"Turn on supervision in the Family Center."},
+		{"On Roblox: parent account", "Chat with friends only (or off), approving new friends",
+			"Set in a parent account linked to the child's."},
 	},
 }

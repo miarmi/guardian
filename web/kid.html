@@ -29,6 +29,7 @@
     {{end}}
   {{else if .Valid}}
     <p class="reason">{{.Finding.Reason}}</p>
+    {{if eq .Finding.Situation.Kind "photo"}}<p class="guide">{{t "kid_photo_guide"}}</p>{{end}}
     {{if .Thanks}}
       <p class="status-line ok" role="status">{{t "kid_thanks"}}</p>
     {{else if .Already}}

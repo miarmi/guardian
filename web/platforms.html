@@ -30,7 +30,7 @@
     <h2 id="phone-heading">{{t "phone_part"}}</h2>
     <p class="note">{{t "phone_intro"}}</p>
     <ol class="steps">
-      {{range .Steps}}<li>{{.}}</li>
+      {{range .Steps}}<li><strong class="step-title">{{.Title}}</strong><span class="step-path">{{.Path}}</span><span class="step-why">{{.Why}}</span></li>
       {{end}}
     </ol>
     {{if .Checked}}<p class="status-line ok">{{t "phone_last" .Checked}}</p>{{end}}

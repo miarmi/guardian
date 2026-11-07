@@ -4,7 +4,9 @@
 
 {{.F.Situation.Name}}
 {{.L.T "fin_in_chat" .F.ChatLabel}}
-{{.F.Reason}}
+{{.F.Reason}}{{if eq .F.Situation.Kind "photo"}}
+
+{{.L.T "kid_photo_guide"}}{{end}}
 
 {{.L.T "child_parents_know"}}
 {{.L.T "child_button_hint"}}

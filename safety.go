@@ -383,6 +383,7 @@ func (a *App) privacyView(r *http.Request) privacyView {
 	}
 	v.Rows = a.privacyRows(p)
 	v.AllSafe = len(p.risky()) == 0
+	v.Done = v.Done && v.AllSafe // a later change on the phone makes it stale
 	return v
 }
 

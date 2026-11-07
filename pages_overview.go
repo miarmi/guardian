@@ -143,6 +143,7 @@ type banner struct {
 	Text  string
 	More  string // "+1 další" when another of the same kind waits
 	Child bool
+	Href  string // where it opens, /findings when empty
 }
 
 func (a *App) banners(ctx context.Context) []banner {
@@ -167,7 +168,7 @@ func (a *App) banners(ctx context.Context) []banner {
 	// One banner per stranger (criterion 37), at most three.
 	whos, more, _ := a.store.UnseenStrangers(ctx, 3)
 	for i, who := range whos {
-		b := banner{Text: a.lang.T("stranger_banner", who)}
+		b := banner{Text: a.lang.T("stranger_banner", who), Href: "/findings#strangers"}
 		if i == len(whos)-1 && more > 0 {
 			b.More = a.lang.T("banner_more", more)
 		}

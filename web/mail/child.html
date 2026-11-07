@@ -6,6 +6,7 @@
 <p style="margin:0 0 4px;font-weight:700">{{.F.Situation.Name}}</p>
 <p style="margin:0 0 4px;color:#56666d">{{.L.T "fin_in_chat" .F.ChatLabel}}</p>
 <p style="margin:0 0 20px">{{.F.Reason}}</p>
+{{if eq .F.Situation.Kind "photo"}}<p style="margin:0 0 20px;font-weight:700">{{.L.T "kid_photo_guide"}}</p>{{end}}
 <p style="margin:0 0 8px;font-weight:700">{{.L.T "child_parents_know"}}</p>
 <p style="margin:0 0 8px">{{.L.T "child_button_hint"}}</p>
 <p style="margin:0 0 24px"><a href="{{.Link}}" style="display:inline-block;background:#1e6b64;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:999px">{{.L.T "child_button"}}</a></p>
