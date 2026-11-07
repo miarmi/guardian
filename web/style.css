@@ -330,7 +330,7 @@ blockquote .who { display: block; font-size: 0.85rem; font-weight: 700; color: v
 
 /* Phone checklist. */
 .phone-check { margin-top: 2rem; }
-.steps { padding-left: 1.4rem; display: grid; gap: 0.6rem; }
+.steps { padding-left: 0; list-style: none; display: grid; gap: 0.6rem; }
 .steps li { display: grid; gap: 0.2rem; }
 .step-path { font-size: 0.95rem; overflow-wrap: anywhere; }
 .step-why { color: var(--muted); font-size: 0.92rem; }

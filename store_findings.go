@@ -149,6 +149,12 @@ func (s *store) UnseenAlert(ctx context.Context) (situation, chat string, ok boo
 	return s.newestFinding(ctx, "f.status = 'open' AND f.seen = 0 AND s.action = 'alert'")
 }
 
+// UnseenAlertCount counts the open, unseen alert findings.
+func (s *store) UnseenAlertCount(ctx context.Context) (int, error) {
+	return s.count(ctx, `SELECT COUNT(*) FROM findings f JOIN situations s ON s.id = f.situation_id
+		WHERE f.status = 'open' AND f.seen = 0 AND s.action = 'alert'`)
+}
+
 // UnseenHelp returns the newest request for help with a finding that the
 // parents haven't opened.
 func (s *store) UnseenHelp(ctx context.Context) (situation, chat string, ok bool, err error) {
@@ -160,7 +166,7 @@ func (s *store) UnseenHelp(ctx context.Context) (situation, chat string, ok bool
 func (s *store) newestFinding(ctx context.Context, where string) (situation, chat string, ok bool, err error) {
 	err = s.db.QueryRowContext(ctx, `SELECT s.name, COALESCE(NULLIF(c.name, ''), f.chat) FROM findings f
 		JOIN situations s ON s.id = f.situation_id LEFT JOIN chats c ON c.jid = f.chat
-		WHERE `+where+` ORDER BY f.updated_at DESC LIMIT 1`).Scan(&situation, &chat)
+		WHERE `+where+` ORDER BY f.updated_at DESC, f.id DESC LIMIT 1`).Scan(&situation, &chat)
 	if err == sql.ErrNoRows {
 		return "", "", false, nil
 	}
