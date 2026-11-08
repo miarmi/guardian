@@ -1,5 +1,14 @@
 # Guardian
 
+> **Archived on 8 November 2026 — development has stopped.**
+> Guardian only ever reached WhatsApp. Bullying among children mostly happens
+> on Discord, Roblox, Instagram and Messenger, where no official, consent-based
+> way to read messages exists, and reading them unofficially was never an
+> option here. An agent that watches one channel while the problem lives on
+> others gives false comfort, so the author stopped rather than ship that.
+> The code stays available under the MIT licence for anyone who wants to
+> continue it. No support, no further releases.
+
 Guardian keeps a copy of your child's chats **at home, on your own server,
 with your child's knowledge**, so that it can look for bullying and tell you
 when something is wrong. Nothing is hidden: every connection shows up on the
